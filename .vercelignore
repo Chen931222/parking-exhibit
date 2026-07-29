@@ -1,0 +1,4 @@
+_src
+!models
+*.md
+.vercelignore

@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>挪車的代價 — 停車場即資料結構</title>
+<meta name="description" content="取一台停在巷子深處的車，系統得先挪開前面所有車。堆疊、佇列、二元搜尋樹——課堂作業改造成看得見的 3D 論證。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23141416'/%3E%3Ctext x='50' y='72' font-size='64' font-weight='bold' text-anchor='middle' fill='%23F2B824' font-family='sans-serif'%3EP%3C/text%3E%3C/svg%3E">
+<!--
+  THESIS：資料結構的選擇就是服務品質——「取深處的車要先挪前面 k 台」由引擎真算給你看；
+    拒絕的預設＝把課堂系統做成功能列表頁。
+  OWN-WORLD：夜間停車場（DESIGN.md）——柏油 #141416、混凝土 #26262a、標線白 #E9E6DF、
+    標線黃 #F2B824 單一強調；Archivo 大寫告示＋Noto Sans TC＋mono 車牌讀數；低多邊形實色 3D。
+  STORY：訪客看完自動導覽（進場→排隊→挪車之舞→平面對照）就懂堆疊的帳單，
+    然後親手進場、點車取車，看兩種結構的挪車數即時分流。
+  FIRST VIEWPORT：全幕 3D 停車場夜景＋左側巨型漆字「取一台車，先挪四台。」＋導覽自動開始。
+  FORM：站主拍板方向（3D 模型＋動畫解釋＋接手操作，2026-07-29 對話），未擲骰；
+    引擎忠於 _src/*.py，挪車計數與平面對照為本站增補的測量。
+-->
+<style>
+:root{--asphalt:#141416;--concrete:#26262a;--line:#E9E6DF;--muted:#9B978E;--paint:#F2B824}
+*{margin:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{background:var(--asphalt);color:var(--line);font-family:'Noto Sans TC',sans-serif;line-height:1.7}
+.mono{font-family:ui-monospace,'Cascadia Mono',Consolas,monospace;letter-spacing:.1em}
+#gl{position:fixed;inset:0;display:block}
+.ui{position:fixed;inset:0;pointer-events:none}
+.ui a,.ui button,.ui label,.ui .panel{pointer-events:auto}
+
+.mast{position:fixed;top:14px;left:16px;right:16px;display:flex;justify-content:space-between;font-size:10px;color:var(--muted)}
+.mast b{color:var(--line);font-weight:400}
+
+/* 標題頁（漆字） */
+.title{position:fixed;left:6vw;top:16vh;max-width:640px;transition:opacity .8s}
+.title h1{font-family:Archivo,'Noto Sans TC',sans-serif;font-weight:800;text-transform:uppercase;
+  font-size:clamp(38px,7vw,92px);line-height:1.06;letter-spacing:.02em}
+.title h1 em{font-style:normal;color:var(--paint)}
+.title .sub{margin-top:20px;font-size:clamp(13px,1.4vw,16px);color:var(--muted);max-width:40ch}
+.title .sub b{color:var(--line);font-weight:700}
+.title .go{margin-top:26px;display:flex;gap:10px;flex-wrap:wrap}
+.title.off{opacity:0;pointer-events:none!important}
+.title.off *{pointer-events:none!important}
+
+button{font-family:'Noto Sans TC',sans-serif;font-size:13.5px;padding:9px 18px;border:1px solid var(--line);
+  background:transparent;color:var(--line);cursor:pointer;transition:background .15s,color .15s,border-color .15s}
+button:hover{background:var(--line);color:var(--asphalt)}
+button.hot{border-color:var(--paint);color:var(--paint)}
+button.hot:hover{background:var(--paint);color:var(--asphalt)}
+button:disabled{opacity:.35;cursor:default}
+button:disabled:hover{background:transparent;color:var(--line)}
+button.on-tgl{border-color:var(--paint);color:var(--paint)}   /* 開關型按鈕的「開」態 */
+
+/* 帳單讀數 */
+.bill{position:fixed;top:40px;right:16px;text-align:right;display:none}
+.bill .row{margin-top:8px}
+.bill .k{font-size:10px;color:var(--muted);letter-spacing:.1em}
+.bill .v{font-family:ui-monospace,Consolas,monospace;font-size:clamp(22px,3vw,34px);color:var(--paint);
+  font-variant-numeric:tabular-nums;line-height:1.1}
+.bill .v.calm{color:var(--line)}
+
+/* 幕卡 */
+.cue{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);max-width:580px;width:calc(100% - 32px);
+  background:var(--concrete);border:1px solid rgba(233,230,223,.25);padding:13px 16px;font-size:14.5px;
+  display:none;transition:opacity .3s}
+.cue .tick{display:inline-block;width:9px;height:9px;background:var(--paint);margin-right:10px;vertical-align:1px}
+.cue b{color:var(--paint);font-weight:700}
+.cue .plate{font-family:ui-monospace,Consolas,monospace;letter-spacing:.08em}
+.skip{position:fixed;right:16px;bottom:16px;display:none;font-size:12px;padding:7px 14px}
+
+/* 操作台 */
+.deck{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);width:calc(100% - 24px);max-width:760px;
+  background:var(--concrete);border:1px solid rgba(233,230,223,.25);padding:10px 12px;display:none}
+.deck .rowa{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.deck label{font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:5px;cursor:pointer}
+.deck input[type=checkbox]{accent-color:var(--paint)}
+.deck .hint{font-size:11px;color:var(--muted);margin-top:7px}
+.deck .hint b{color:var(--paint);font-weight:700}
+
+/* 程式字條：每一步同步亮出背後那行課堂 Python */
+.code{position:fixed;left:16px;top:44px;width:340px;background:var(--concrete);
+  border:1px solid rgba(233,230,223,.25);display:none;font-size:11.5px}
+.code .hd{padding:8px 12px;border-bottom:1px solid rgba(233,230,223,.18);
+  font-size:9.5px;color:var(--muted);letter-spacing:.1em}
+.code .hd b{color:var(--paint);font-weight:400}
+.code .op{padding:8px 12px 0;font-size:13px;font-weight:700}
+.code .lg{padding:2px 12px 8px;color:var(--muted);font-size:11.5px;line-height:1.55}
+.code pre{margin:0;padding:8px 0 10px;border-top:1px solid rgba(233,230,223,.12);
+  font-family:ui-monospace,'Cascadia Mono',Consolas,monospace;font-size:11px;line-height:1.7;
+  overflow-x:auto;color:var(--muted)}
+.code .ln{padding:0 12px;white-space:pre}
+.code .ln.hot{color:var(--line);background:rgba(242,184,36,.14);
+  box-shadow:inset 3px 0 0 var(--paint)}
+.code .flat{padding:7px 12px;border-top:1px solid rgba(233,230,223,.18);
+  font-family:ui-monospace,Consolas,monospace;font-size:10.5px;color:var(--muted);display:none}
+.code .flat b{color:var(--paint);font-weight:400}
+
+/* 紀錄簿（BST） */
+.ledger{position:fixed;top:70px;right:16px;bottom:150px;width:min(330px,calc(100vw - 32px));
+  background:var(--concrete);border:1px solid rgba(233,230,223,.25);display:none;flex-direction:column}
+.ledger .hd{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;
+  border-bottom:1px solid rgba(233,230,223,.18);font-size:10px;color:var(--muted);letter-spacing:.1em}
+.ledger .hd button{padding:2px 9px;font-size:12px}
+.ledger .bd{overflow-y:auto;padding:8px 12px;font-size:12px}
+.ledger .ent{padding:7px 0;border-top:1px solid rgba(233,230,223,.1)}
+.ledger .ent:first-child{border-top:0}
+.ledger .pl{font-family:ui-monospace,Consolas,monospace;letter-spacing:.08em;color:var(--paint)}
+.ledger .tm{color:var(--muted);font-size:11px}
+
+.foot{position:fixed;left:16px;bottom:14px;font-size:9.5px;color:var(--muted);max-width:46ch;line-height:1.6;display:none}
+
+@media(max-width:640px){
+  .title{top:10vh}
+  .bill{top:34px}
+  .ledger{bottom:210px}
+  .mast .opt{display:none}
+  .cue{bottom:180px}
+  .foot{display:none!important}   /* endTour 會設 inline display，這裡必須壓過它 */
+  /* 手機版程式字條收成：動作＋邏輯＋當前那一行，讓開右上帳單 */
+  .code{width:calc(100vw - 32px);top:142px}
+  .code .ln:not(.hot){display:none}
+  .code pre{padding:4px 0 6px}
+}
+</style>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=Noto+Sans+TC:wght@400;700&display=swap" rel="stylesheet">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div class="ui">
+  <div class="mast mono">
+    <span>PARKING RECORDS · 挪車的代價<span class="opt"> · 資料結構期末改造</span></span>
+    <span><b>堆疊×2 ＋ 佇列 ＋ BST</b></span>
+  </div>
+
+  <div class="title" id="title">
+    <h1>取一台車，<br><em>先挪四台。</em></h1>
+    <p class="sub">深夜的單巷道停車場。<b>堆疊、佇列、二元搜尋樹</b>——這份資料結構作業真正教的事，是你在門口等的每一分鐘。導覽即將開始。</p>
+    <div class="go">
+      <button class="hot" id="btn-tour">▸ 開始導覽</button>
+      <button id="btn-skip0">直接進操作台</button>
+    </div>
+  </div>
+
+  <div class="bill" id="bill">
+    <div class="row"><div class="k mono">單巷道・堆疊 — 挪車</div><div class="v" id="b-stack">0 台</div></div>
+    <div class="row" id="b-flat-row" style="display:none"><div class="k mono">平面・隨機存取 — 挪車</div><div class="v calm" id="b-flat">0 台</div></div>
+  </div>
+
+  <div class="code" id="code">
+    <div class="hd mono">SOURCE — 你的期末程式 · <b id="code-f">parking_stack.py</b></div>
+    <div class="op" id="code-op"></div>
+    <div class="lg" id="code-lg"></div>
+    <pre id="code-pre"></pre>
+    <div class="flat" id="code-flat">平面側對照：<b>slots[i] = None</b> ── 隨機存取 O(1)，不用挪任何車（本站增補）</div>
+  </div>
+
+  <div class="cue" id="cue" aria-live="polite"><span class="tick"></span><span id="cue-t"></span></div>
+  <button class="skip" id="btn-skip">跳過導覽 ▸▸</button>
+
+  <div class="deck" id="deck">
+    <div class="rowa">
+      <button class="hot" id="op-enter">▸ 進場一台</button>
+      <label><input type="checkbox" id="op-dis">身障車</label>
+      <button id="op-deep">取最深的車</button>
+      <button id="op-ledger">紀錄簿（BST）</button>
+      <button id="op-code" class="on-tgl">程式字條</button>
+      <button id="op-reset">清空重來</button>
+    </div>
+    <div class="hint">或<b>直接點場上任何一台車</b>＝取那台車。同一批車同步停進兩種結構，帳單即時分流。</div>
+  </div>
+
+  <div class="ledger" id="ledger">
+    <div class="hd mono"><span>LEDGER — 出入登記簿（BST 中序＝車牌排序）</span><button id="op-ledger-x">✕</button></div>
+    <div class="bd" id="ledger-bd"></div>
+  </div>
+
+  <p class="foot" id="foot"><span class="mono">DISCLOSURE</span> — 引擎忠於課堂 Python（ParkingStack／WaitingQueue／CarRecordTree，快照在 repo `_src/`）；車牌為合成資料；「挪車 k 台」由引擎即時計算；平面對照與計數為本站增補。</p>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
+
+/* ══ 引擎：忠實移植 _src/*.py ══ */
+function makeCar(plate,dis){return{plate:plate,dis:!!dis,t:now()}}
+function now(){var d=new Date();return d.toTimeString().slice(0,8)}
+function PStack(cap){this.cap=cap;this.s=[]}
+PStack.prototype={isFull:function(){return this.s.length>=this.cap},
+ push:function(c){if(this.isFull())return false;this.s.push(c);return true},
+ pop:function(){return this.s.pop()||null},
+ findIndex:function(p){for(var i=0;i<this.s.length;i++)if(this.s[i].plate===p)return i;return null}};
+function WQueue(cap){this.cap=cap;this.q=[]}
+WQueue.prototype={isFull:function(){return this.q.length>=this.cap},
+ enqueue:function(c){if(this.isFull())return false;this.q.push(c);return true},
+ dequeue:function(){return this.q.shift()||null}};
+function BST(){this.root=null}
+BST.prototype={
+ _ins:function(n,p){if(!n)return{plate:p,recs:[],l:null,r:null};
+  if(p<n.plate)n.l=this._ins(n.l,p);else if(p>n.plate)n.r=this._ins(n.r,p);return n},
+ _find:function(n,p){if(!n)return null;if(p===n.plate)return n;
+  return p<n.plate?this._find(n.l,p):this._find(n.r,p)},
+ addEnter:function(p,t){this.root=this._ins(this.root,p);var n=this._find(this.root,p);
+  for(var i=0;i<n.recs.length;i++)if(n.recs[i].out===null)return;   /* 重複進場忽略（原碼行為） */
+  n.recs.push({in:t,out:null})},
+ addLeave:function(p,t){var n=this._find(this.root,p);
+  if(!n){this.root=this._ins(this.root,p);n=this._find(this.root,p)}
+  for(var i=n.recs.length-1;i>=0;i--)if(n.recs[i].out===null){n.recs[i].out=t;return}
+  n.recs.push({in:'未知',out:t})},
+ inorder:function(){var out=[];(function walk(n){if(!n)return;walk(n.l);out.push(n);walk(n.r)})(this.root);return out}};
+
+/* 巷道場（原系統）：進場規則、LIFO 挪車、離場後排隊遞補，全對齊 main.py */
+function AlleyLot(tree){this.normal=new PStack(5);this.dis=new PStack(2);this.wait=new WQueue(5);this.tree=tree}
+AlleyLot.prototype={
+ enter:function(plate,dis,ev){var c=makeCar(plate,dis);
+  if(dis){
+   if(!this.dis.isFull()){this.dis.push(c);this.tree.addEnter(plate,c.t);ev.push({t:'park',plate:plate,area:'dis',idx:this.dis.s.length-1});return}
+   if(!this.normal.isFull()){this.normal.push(c);this.tree.addEnter(plate,c.t);ev.push({t:'park',plate:plate,area:'normal',idx:this.normal.s.length-1});return}
+  }else if(!this.normal.isFull()){this.normal.push(c);this.tree.addEnter(plate,c.t);ev.push({t:'park',plate:plate,area:'normal',idx:this.normal.s.length-1});return}
+  if(this.wait.enqueue(c))ev.push({t:'queue',plate:plate,idx:this.wait.q.length-1});
+  else ev.push({t:'reject',plate:plate})},
+ leave:function(plate,ev){
+  var area=this.dis.findIndex(plate)!==null?this.dis:(this.normal.findIndex(plate)!==null?this.normal:null);
+  if(!area){ev.push({t:'notfound',plate:plate});return 0}
+  var temp=[],moves=0;
+  while(true){var top=area.pop();if(top.plate===plate)break;temp.push(top);ev.push({t:'moveOut',plate:top.plate,tempIdx:temp.length-1});moves++}
+  this.tree.addLeave(plate,now());ev.push({t:'exit',plate:plate});
+  while(temp.length){var c=temp.pop();area.push(c);ev.push({t:'moveBack',plate:c.plate,area:area===this.dis?'dis':'normal',idx:area.s.length-1})}
+  if(this.wait.q.length){var nx=this.wait.dequeue();ev.push({t:'dequeue',plate:nx.plate});this.enter(nx.plate,nx.dis,ev)}
+  return moves}};
+
+/* 平面場（本站增補的對照）：同容量同規則，但隨機存取＝零挪車 */
+function FlatLot(){this.slots=new Array(7).fill(null);this.wait=new WQueue(5)}  /* 0-4 一般、5-6 身障 */
+FlatLot.prototype={
+ enter:function(plate,dis,ev){var c=makeCar(plate,dis),i;
+  if(dis){for(i=5;i<7;i++)if(!this.slots[i]){this.slots[i]=c;ev.push({t:'park',plate:plate,idx:i});return}}
+  for(i=0;i<5;i++)if(!this.slots[i]){this.slots[i]=c;ev.push({t:'park',plate:plate,idx:i});return}
+  if(this.wait.enqueue(c))ev.push({t:'queue',plate:plate,idx:this.wait.q.length-1});
+  else ev.push({t:'reject',plate:plate})},
+ leave:function(plate,ev){
+  for(var i=0;i<7;i++)if(this.slots[i]&&this.slots[i].plate===plate){this.slots[i]=null;ev.push({t:'exit',plate:plate});
+   if(this.wait.q.length){var nx=this.wait.dequeue();ev.push({t:'dequeue',plate:nx.plate});this.enter(nx.plate,nx.dis,ev)}
+   return 0}
+  ev.push({t:'notfound',plate:plate});return 0}};
+
+/* ══ 3D 場景 ══ */
+var cv=document.getElementById('gl');
+var renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;
+var scene=new THREE.Scene();scene.background=new THREE.Color(0x0d0d10);
+var camera=new THREE.PerspectiveCamera(42,1,0.1,300);
+scene.add(new THREE.AmbientLight(0x8890a8,0.5));
+var moon=new THREE.DirectionalLight(0xaab4cc,1.0);moon.position.set(-18,30,14);
+moon.castShadow=true;moon.shadow.mapSize.set(2048,2048);
+moon.shadow.camera.left=-26;moon.shadow.camera.right=26;
+moon.shadow.camera.top=22;moon.shadow.camera.bottom=-22;
+moon.shadow.camera.far=80;moon.shadow.bias=-0.0004;
+scene.add(moon);
+var sodium=new THREE.PointLight(0xF2B824,90,40,1.8);sodium.position.set(-10.5,8.5,-12);scene.add(sodium);
+/* 夜間微弱環境反射：車漆才有金屬感（PMREM＋RoomEnvironment，強度壓低） */
+var pmrem=new THREE.PMREMGenerator(renderer);
+var envTex=pmrem.fromScene(new RoomEnvironment(),0.04).texture;
+
+/* 地坪：一張手繪 CanvasTexture 畫掉所有標線與漆字 */
+var GW=46,GD=34;                                     /* 地面 46×34，x∈[-23,23]、z∈[-17,17] */
+function px(x){return (x+GW/2)/GW*2048}
+function pz(z){return (z+GD/2)/GD*1514}
+function paintFloor(){
+ var c=document.createElement('canvas');c.width=2048;c.height=1514;var g=c.getContext('2d');
+ g.fillStyle='#17171a';g.fillRect(0,0,2048,1514);
+ for(var i=0;i<2600;i++){g.fillStyle='rgba(255,255,255,'+(Math.random()*0.03)+')';
+  g.fillRect(Math.random()*2048,Math.random()*1514,2,2);}
+ /* 街道帶 */
+ g.fillStyle='#1d1d21';g.fillRect(0,pz(5.5),2048,pz(13)-pz(5.5));
+ g.strokeStyle='rgba(233,230,223,.5)';g.lineWidth=4;g.setLineDash([40,30]);
+ g.beginPath();g.moveTo(0,pz(9.2));g.lineTo(2048,pz(9.2));g.stroke();g.setLineDash([]);
+ function slotRect(x0,z0,w,d,dash){g.strokeStyle='rgba(233,230,223,.75)';g.lineWidth=5;
+  if(dash)g.setLineDash([26,18]);g.strokeRect(px(x0),pz(z0),px(x0+w)-px(x0),pz(z0+d)-pz(z0));g.setLineDash([])}
+ function label(tx,x,z,size,col,rot){g.save();g.translate(px(x),pz(z));if(rot)g.rotate(rot);
+  g.fillStyle=col;g.font='700 '+size+'px sans-serif';g.textAlign='center';g.fillText(tx,0,0);g.restore()}
+ /* 巷道（堆疊）：黃邊線＋五格 */
+ g.strokeStyle='#F2B824';g.lineWidth=7;
+ g.strokeRect(px(-10.3),pz(-14.3),px(-6.7)-px(-10.3),pz(0.6)-pz(-14.3));
+ for(var s=0;s<5;s++)slotRect(-10,(-12.6+s*2.9)-1.25,3.3,2.5,true);
+ label('單巷道・堆疊 STACK',-8.5,2.9,30,'rgba(242,184,36,.85)');
+ label('▲ 巷口',-8.5,1.5,26,'rgba(233,230,223,.5)');
+ /* 暫存區：黃斜線 */
+ g.save();g.beginPath();g.rect(px(-15.6),pz(-14.3),px(-12.2)-px(-15.6),pz(0.6)-pz(-14.3));g.clip();
+ g.strokeStyle='rgba(242,184,36,.28)';g.lineWidth=6;
+ for(var h=-30;h<40;h++){g.beginPath();g.moveTo(px(-15.6)+h*36,pz(-14.3));g.lineTo(px(-15.6)+h*36+220,pz(0.6));g.stroke()}
+ g.restore();
+ g.strokeStyle='rgba(242,184,36,.5)';g.lineWidth=4;
+ g.strokeRect(px(-15.6),pz(-14.3),px(-12.2)-px(-15.6),pz(0.6)-pz(-14.3));
+ label('暫存 TEMP',-13.9,2.9,26,'rgba(242,184,36,.6)');
+ /* 身障×2 */
+ for(var d2=0;d2<2;d2++){slotRect(-5.6,(-1-d2*2.9)-1.25,3.3,2.5,false);
+  label('身障',-3.95,(-1-d2*2.9)+0.4,30,'rgba(233,230,223,.6)')}
+ /* 平面（隨機存取）：七格朝街 */
+ for(var f=0;f<7;f++){var fx=1.5+f*2.7;slotRect(fx-1.25,-4.9,2.5,3.4,false);
+  if(f>=5)label('身障',fx,-3,26,'rgba(233,230,223,.6)')}
+ label('平面・隨機存取 RANDOM ACCESS',10.6,-6.3,42,'rgba(233,230,223,.6)');
+ /* 等待區（佇列）：左＝巷道側、右＝平面側 */
+ for(var q=0;q<5;q++){var qx=-16+q*3.2;slotRect(qx-1.4,10.4,2.8,2.6,true)}
+ for(var q2=0;q2<5;q2++){var qx2=2+q2*3.2;slotRect(qx2-1.4,10.4,2.8,2.6,true)}
+ label('等待區 QUEUE ▸',-9.5,14.6,38,'rgba(233,230,223,.55)');
+ label('等待區 QUEUE ▸',8.5,14.6,38,'rgba(233,230,223,.55)');
+ label('P',17.5,13.4,240,'rgba(233,230,223,.07)');
+ var tex=new THREE.CanvasTexture(c);tex.anisotropy=8;return tex}
+var ground=new THREE.Mesh(new THREE.PlaneGeometry(GW,GD),
+ new THREE.MeshLambertMaterial({map:paintFloor()}));
+ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
+/* 圍牆（北面＋西面，混凝土） */
+var wallM=new THREE.MeshLambertMaterial({color:0x2f2f36});
+var wallN=new THREE.Mesh(new THREE.BoxGeometry(GW,3.2,0.6),wallM);wallN.position.set(0,1.6,-GD/2);scene.add(wallN);
+var wallW=new THREE.Mesh(new THREE.BoxGeometry(0.6,3.2,GD),wallM);wallW.position.set(-GW/2,1.6,0);scene.add(wallW);
+/* 燈桿 */
+var pole=new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.12,8.6,6),new THREE.MeshLambertMaterial({color:0x3a3a40}));
+pole.position.set(-11.9,4.3,-14.4);scene.add(pole);
+var lampHead=new THREE.Mesh(new THREE.BoxGeometry(0.9,0.22,0.5),new THREE.MeshBasicMaterial({color:0xF2B824}));
+lampHead.position.set(-11.9,8.7,-14.4);scene.add(lampHead);
+
+/* ── 車模：Kenney Car Kit（CC0，models/；載不到就退回手拼方盒車） ── */
+var MODELN=['sedan','sedan-sports','hatchback-sports','suv','suv-luxury','taxi','truck'];
+var LIB={},MODELS_READY=(function(){
+ var loader=new GLTFLoader();
+ function one(name){return new Promise(function(res){
+  loader.load('models/'+name+'.glb',function(g){
+   var tpl=g.scene,box=new THREE.Box3().setFromObject(tpl),size=box.getSize(new THREE.Vector3());
+   var wrap=new THREE.Group();
+   /* 長邊轉到 z 軸、縮到車位長 2.4、貼地置中；Kenney 車頭原生朝 -z，加 π 翻成本站慣例 +z */
+   tpl.rotation.y=(size.x>size.z?Math.PI/2:0)+Math.PI;
+   wrap.add(tpl);
+   var b2=new THREE.Box3().setFromObject(wrap),s2=b2.getSize(new THREE.Vector3());
+   var k=2.4/Math.max(s2.z,0.001);wrap.scale.setScalar(k);
+   var b3=new THREE.Box3().setFromObject(wrap),c3=b3.getCenter(new THREE.Vector3());
+   tpl.position.x-=c3.x/k;tpl.position.z-=c3.z/k;tpl.position.y-=b3.min.y/k;
+   wrap.traverse(function(o){if(o.isMesh){o.castShadow=true;
+    if(o.material){o.material.envMap=envTex;o.material.envMapIntensity=0.35}}});
+   LIB[name]=wrap;res()},undefined,function(){res()})})}   /* 單台失敗不擋全場 */
+ return Promise.all(MODELN.concat(['van']).map(one))})();
+/* 網路卡住最多等 8 秒，之後用方盒車開演 */
+var MODELS_GATE=Promise.race([MODELS_READY,new Promise(function(r){setTimeout(r,8000)})]);
+var carN=0;
+function buildCar(dis){
+ var name=dis?'van':MODELN[carN%MODELN.length];
+ if(LIB[name]){carN++;
+  var gp=new THREE.Group();gp.add(LIB[name].clone(true));return gp}
+ return buildBoxCar(dis)}
+var CARCOLS=[0x8e9aa5,0xa58f7a,0x7a8f7d,0x9a8fa5,0xb0a08a,0x7d95a8,0xa88f8f,0x8fa89a];
+function buildBoxCar(dis){
+ var col=dis?0x5d6f8f:CARCOLS[carN++%CARCOLS.length];
+ var gp=new THREE.Group();
+ var body=new THREE.Mesh(new THREE.BoxGeometry(1.3,0.55,2.4),new THREE.MeshLambertMaterial({color:col}));
+ body.position.y=0.5;gp.add(body);
+ var cab=new THREE.Mesh(new THREE.BoxGeometry(1.15,0.42,1.15),
+  new THREE.MeshLambertMaterial({color:new THREE.Color(col).multiplyScalar(0.55)}));
+ cab.position.set(0,0.95,-0.15);gp.add(cab);
+ var wg=new THREE.CylinderGeometry(0.26,0.26,0.22,10),wm=new THREE.MeshLambertMaterial({color:0x111114});
+ [[-0.62,0.78],[0.62,0.78],[-0.62,-0.82],[0.62,-0.82]].forEach(function(p){
+  var w=new THREE.Mesh(wg,wm);w.rotation.z=Math.PI/2;w.position.set(p[0],0.26,p[1]);gp.add(w)});
+ var lite=new THREE.Mesh(new THREE.BoxGeometry(0.9,0.12,0.06),new THREE.MeshBasicMaterial({color:0xfff3cf}));
+ lite.position.set(0,0.52,1.22);gp.add(lite);
+ return gp}
+/* 目標圈 */
+var ring=new THREE.Mesh(new THREE.RingGeometry(1.35,1.6,36),
+ new THREE.MeshBasicMaterial({color:0xF2B824,side:THREE.DoubleSide,transparent:true,opacity:0.9}));
+ring.rotation.x=-Math.PI/2;ring.position.y=0.03;ring.visible=false;scene.add(ring);
+
+/* ══ 位置表 ══ */
+var STREET=7,SPAWN={x:26,z:STREET},EXIT={x:-26,z:STREET};
+function alleySlot(i){return{x:-8.5,z:-12.6+i*2.9}}          /* i=0 最深 */
+function disSlot(i){return{x:-4,z:-1-i*2.9}}
+function tempSlot(k){return{x:-13.9,z:-1-k*2.9}}
+function flatSlot(i){return{x:1.5+i*2.7,z:-3.2}}
+function queueSlot(side,q){return{x:(side==='A'?-16:2)+q*3.2,z:11.7}}
+
+/* ══ tween／車輛動畫 ══ */
+var REDUCED=matchMedia('(prefers-reduced-motion: reduce)').matches;
+var INSTANT=REDUCED;
+var tweens=[],waiters=[];
+function tween(from,to,dur,fn){return new Promise(function(res){
+ if(INSTANT||dur<=0){fn(1);res();return}
+ tweens.push({t0:performance.now(),dur:dur,fn:fn,res:res})})}
+function wait(ms){return new Promise(function(r){
+ if(INSTANT)return r();
+ var id=setTimeout(function(){waiters=waiters.filter(function(w){return w.r!==r});r()},ms);
+ waiters.push({id:id,r:r})})}
+function flushAnim(){                              /* 跳過導覽＝把進行中的動畫全部快轉到底 */
+ tweens.forEach(function(t){t.fn(1);t.res()});tweens.length=0;
+ waiters.forEach(function(w){clearTimeout(w.id);w.r()});waiters=[]}
+function ease(p){return p<0.5?2*p*p:1-Math.pow(-2*p+2,2)/2}
+var SPDF=1;                                       /* 錄影用速度倍率（window.__spdf） */
+function driveTo(gp,pts,spd){                    /* 逐段開過去，車頭朝行進方向 */
+ spd=(spd||7.5)*SPDF;var p=Promise.resolve();
+ pts.forEach(function(pt){p=p.then(function(){
+  var sx=gp.position.x,sz=gp.position.z,dx=pt.x-sx,dz=pt.z-sz,dist=Math.hypot(dx,dz);
+  if(dist<0.01)return;
+  var ang=Math.atan2(dx,dz),a0=gp.rotation.y;
+  var da=((ang-a0+Math.PI*3)%(Math.PI*2))-Math.PI;
+  return tween(0,1,140,function(k){gp.rotation.y=a0+da*ease(k)}).then(function(){
+   return tween(0,1,dist/spd*1000,function(k){var e=ease(k);
+    gp.position.x=sx+dx*e;gp.position.z=sz+dz*e})})})});
+ return p}
+
+/* ══ 程式字條：每一步亮出背後那行課堂 Python（_src/ 原始碼節錄） ══ */
+var SNIP={
+ push:{f:'parking_stack.py',op:'車輛進場 — push()',
+  lg:'堆疊（LIFO）：新車永遠停在最上面（巷口），堵住前面所有車。',
+  c:['def push(self, car):','    if self.is_full():','        return False',
+     '    self.stack.append(car)','    return True'],hot:3},
+ enqueue:{f:'waiting_queue.py',op:'場滿排隊 — enqueue()',
+  lg:'佇列（FIFO）：先來先進，後到的排在隊伍尾端。',
+  c:['def enqueue(self, car):','    if self.is_full():','        return False',
+     '    self.queue.append(car)','    return True'],hot:3},
+ reject:{f:'waiting_queue.py',op:'等待區也滿 — 拒收',
+  lg:'佇列有容量上限（5 台），滿了就整個系統拒收。',
+  c:['def enqueue(self, car):','    if self.is_full():','        return False'],hot:2},
+ moveout:{f:'main.py · car_leave()',op:'挪車 — pop() 到暫存堆疊',
+  lg:'目標不在頂端：上面的車只能一台一台彈出，暫放旁邊（這就是堆疊的代價）。',
+  c:['while True:','    top = area.pop()','    if top.plate == plate:','        break',
+     '    temp_stack.append(top)'],hot:4},
+ exit:{f:'main.py · car_leave()',op:'目標出場 — 寫入 BST 紀錄',
+  lg:'離場時間記進二元搜尋樹：以車牌為 key，之後可用車牌 O(log n) 查歷史。',
+  c:['if top.plate == plate:','    break','record_tree.add_leave_record(',
+     '    target_car.plate, out_time)'],hot:2},
+ moveback:{f:'main.py · car_leave()',op:'倒車歸位 — 暫存堆疊倒回',
+  lg:'暫存也是堆疊：pop 回來剛好恢復原本順序（LIFO 的 LIFO＝原序）。',
+  c:['while temp_stack:','    area.push(temp_stack.pop())'],hot:1},
+ dequeue:{f:'main.py · car_leave()',op:'排隊遞補 — dequeue()',
+  lg:'有車位空出來：佇列最前面那台自動進場（popleft，先來先進）。',
+  c:['if not self.waiting_queue.is_empty():','    next_car = self.waiting_queue.dequeue()',
+     '    self.car_enter(next_car.plate,','                   next_car.is_disabled)'],hot:1}};
+function showCode(key){var s=SNIP[key];if(!s)return;
+ if(typeof codeOn!=='undefined'&&!codeOn)return;
+ var el=document.getElementById('code');el.style.display='block';
+ document.getElementById('code-f').textContent=s.f;
+ document.getElementById('code-op').textContent=s.op;
+ document.getElementById('code-lg').textContent=s.lg;
+ var pre=document.getElementById('code-pre');pre.innerHTML='';
+ s.c.forEach(function(l,i){var d=document.createElement('div');
+  d.className='ln'+(i===s.hot?' hot':'');d.textContent=l;pre.appendChild(d)});}
+
+/* ══ 動畫指揮：把引擎事件演出來 ══ */
+var meshes={A:{},F:{}};                            /* side → plate → group */
+var bills={A:0,F:0};
+var flatShown=false;
+function billUp(side){bills[side]++;
+ var el=document.getElementById(side==='A'?'b-stack':'b-flat');
+ el.textContent=bills[side]+' 台';
+ el.style.transition='none';el.style.opacity=0.2;
+ requestAnimationFrame(function(){el.style.transition='opacity .4s';el.style.opacity=1})}
+function spawnMesh(side,plate,dis){
+ var gp=buildCar(dis);gp.position.set(SPAWN.x,0,SPAWN.z);gp.rotation.y=Math.atan2(-1,0);
+ gp.userData={plate:plate,side:side};
+ if(side==='F'&&!flatShown)gp.visible=false;
+ scene.add(gp);meshes[side][plate]=gp;return gp}
+function killMesh(side,plate){var gp=meshes[side][plate];
+ if(gp){scene.remove(gp);delete meshes[side][plate]}}
+function parkTarget(side,ev){
+ if(side==='F')return flatSlot(ev.idx);
+ return ev.area==='dis'?disSlot(ev.idx):alleySlot(ev.idx)}
+
+var CODEKEY={park:'push',queue:'enqueue',reject:'reject',moveOut:'moveout',
+ exit:'exit',moveBack:'moveback',dequeue:'dequeue'};
+async function playEvents(side,evs,lots){
+ for(var n=0;n<evs.length;n++){var ev=evs[n],gp;
+  if(side==='A'&&CODEKEY[ev.t])showCode(CODEKEY[ev.t]);   /* 字條跟著這一步的程式走 */
+  if(ev.t==='park'){
+   gp=meshes[side][ev.plate]||spawnMesh(side,ev.plate,ev.dis);
+   var tgt=parkTarget(side,ev);
+   if(gp.userData.q!==undefined){delete gp.userData.q;
+    await driveTo(gp,[{x:gp.position.x,z:STREET},{x:tgt.x,z:STREET},tgt])}
+   else await driveTo(gp,[{x:tgt.x,z:STREET},tgt]);
+  }else if(ev.t==='queue'){
+   gp=meshes[side][ev.plate]||spawnMesh(side,ev.plate,ev.dis);
+   var qs=queueSlot(side,ev.idx);gp.userData.q=ev.idx;
+   await driveTo(gp,[{x:qs.x+2.4,z:qs.z},qs]);   /* 沿路緣停正（車頭朝隊伍前方） */
+  }else if(ev.t==='reject'){
+   gp=meshes[side][ev.plate]||spawnMesh(side,ev.plate,ev.dis);
+   await driveTo(gp,[{x:EXIT.x,z:STREET}],10);killMesh(side,ev.plate);
+  }else if(ev.t==='moveOut'){
+   gp=meshes[side][ev.plate];var ts=tempSlot(ev.tempIdx);
+   await driveTo(gp,[{x:gp.position.x,z:3.4},{x:ts.x,z:3.4},ts]);
+   billUp(side);
+  }else if(ev.t==='exit'){
+   gp=meshes[side][ev.plate];
+   if(gp){await driveTo(gp,[{x:gp.position.x,z:STREET},{x:EXIT.x,z:STREET}],10);killMesh(side,ev.plate)}
+  }else if(ev.t==='moveBack'){
+   gp=meshes[side][ev.plate];
+   var bk=side==='A'?(ev.area==='dis'?disSlot(ev.idx):alleySlot(ev.idx)):flatSlot(ev.idx);
+   await driveTo(gp,[{x:gp.position.x,z:3.4},{x:bk.x,z:3.4},bk]);
+  }else if(ev.t==='dequeue'){
+   /* 排隊往前遞補：其餘車前移一格 */
+   var lot=lots[side],shift=[];
+   lot.wait.q.forEach(function(c,qi){var g2=meshes[side][c.plate];
+    if(g2){g2.userData.q=qi;shift.push(driveTo(g2,[queueSlot(side,qi)],5))}});
+   await Promise.all(shift);
+  }
+ }}
+
+/* ══ 世界狀態 ══ */
+var tree,lotA,lotF,busy=false;
+function newWorld(){tree=new BST();lotA=new AlleyLot(tree);lotF=new FlatLot();
+ ['A','F'].forEach(function(s){Object.keys(meshes[s]).forEach(function(p){killMesh(s,p)})});
+ bills={A:0,F:0};carN=0;
+ document.getElementById('b-stack').textContent='0 台';
+ document.getElementById('b-flat').textContent='0 台'}
+newWorld();
+var lots={get A(){return lotA},get F(){return lotF}};
+
+async function opEnter(plate,dis){
+ var evA=[],evF=[];lotA.enter(plate,dis,evA);lotF.enter(plate,dis,evF);
+ evA.forEach(function(e){e.dis=dis});evF.forEach(function(e){e.dis=dis});
+ await Promise.all([playEvents('A',evA,lots),playEvents('F',evF,lots)]);
+ return evA}
+async function opLeave(plate){
+ var evA=[],evF=[];var mv=lotA.leave(plate,evA);lotF.leave(plate,evF);
+ await Promise.all([playEvents('A',evA,lots),playEvents('F',evF,lots)]);
+ return mv}
+
+/* ══ 鏡頭 ══ */
+var camTgt=new THREE.Vector3();
+var POSES={
+ title:{p:[11,16,26],t:[-2,0,-2]},
+ alley:{p:[-19,7.5,10],t:[-9,0,-7]},
+ queue:{p:[-3,9,23],t:[-8,0,10]},
+ duel:{p:[3,23,15],t:[0,0,-2]},
+ console:{p:[7,15,22],t:[-1,0,0]}};
+var mob=false;
+function pose(name,dur){var P=POSES[name];
+ var m=mob?1.45:1;
+ var tx=P.p[0]*m,ty=P.p[1]*m,tz=P.p[2]*m;
+ var p0=camera.position.clone(),t0=camTgt.clone();
+ return tween(0,1,dur===undefined?1700:dur,function(k){var e=ease(k);
+  camera.position.set(p0.x+(tx-p0.x)*e,p0.y+(ty-p0.y)*e,p0.z+(tz-p0.z)*e);
+  camTgt.set(t0.x+(P.t[0]-t0.x)*e,t0.y+(P.t[1]-t0.y)*e,t0.z+(P.t[2]-t0.z)*e)})}
+camera.position.set(11,16,26);camTgt.set(-2,0,-2);
+
+function resize(){var w=innerWidth,h=innerHeight;
+ renderer.setSize(w,h,false);camera.aspect=w/h;mob=w/h<0.85;camera.updateProjectionMatrix()}
+addEventListener('resize',resize);resize();
+
+(function loop(t){requestAnimationFrame(loop);
+ for(var i=tweens.length-1;i>=0;i--){var tw=tweens[i];
+  var p=Math.min(1,(performance.now()-tw.t0)/tw.dur);tw.fn(p);
+  if(p>=1){tweens.splice(i,1);tw.res()}}
+ ring.rotation.z+=0.01;
+ camera.lookAt(camTgt);renderer.render(scene,camera)})();
+
+/* ══ UI 幕卡 ══ */
+var cueEl=document.getElementById('cue'),cueT=document.getElementById('cue-t');
+function cue(html){if(html===null){cueEl.style.display='none';return}
+ cueEl.style.display='block';cueT.innerHTML=html}
+function showRing(gp){if(!gp){ring.visible=false;return}
+ ring.position.x=gp.position.x;ring.position.z=gp.position.z;ring.visible=true}
+
+/* ══ 車牌（合成資料，符合原系統驗證格式） ══ */
+var used={};
+function synthPlate(){var L='ABCDEFGHJKLMNPRSTUVWXYZ';
+ while(true){var p=L[Math.floor(Math.random()*L.length)]+L[Math.floor(Math.random()*L.length)]+
+  L[Math.floor(Math.random()*L.length)]+'-'+String(1000+Math.floor(Math.random()*9000));
+ if(!used[p]){used[p]=1;return p}}}
+
+/* ══ Act I：自動導覽 ══ */
+var TARGET='NCH-4113';used[TARGET]=1;
+var touring=false,toured=false;
+async function tour(){
+ if(touring)return;touring=true;
+ await MODELS_GATE;
+ document.getElementById('title').classList.add('off');
+ document.getElementById('btn-skip').style.display='block';
+ document.getElementById('bill').style.display='block';
+ var plates=[TARGET,synthPlate(),synthPlate(),synthPlate(),synthPlate()];
+ cue('深夜的<b>單巷道停車場</b>：一次只進得去一台，後進的堵在前面。這種結構，課本叫「堆疊」。');
+ await pose('alley');
+ for(var i=0;i<5;i++)await opEnter(plates[i],false);
+ await wait(900);
+ cue('第六、第七台到了。場內全滿，只能沿街排隊：先來先進，這條線是「佇列」。');
+ pose('queue');
+ await opEnter(synthPlate(),false);await opEnter(synthPlate(),false);
+ await wait(1100);
+ cue('<span class="plate">'+TARGET+'</span> 的車主要取車。他的車，停在<b>最裡面</b>。');
+ await pose('alley');
+ showRing(meshes.A[TARGET]);await wait(1600);
+ var kAbove=lotA.normal.s.length-1-lotA.normal.findIndex(TARGET);   /* 引擎算，不寫死 */
+ cue('前面 '+kAbove+' 台，得一台一台先挪到暫存區。看右上角的帳單。');
+ await wait(600);
+ var mv=await opLeave(TARGET);
+ showRing(null);
+ cue('目標出場後，4 台再倒回去；空出來的位子，排隊第一台自動遞補。這一單的代價：<b>挪車 '+mv+' 台、'+(mv*2)+' 趟</b>。');
+ await wait(2400);
+ cue('同一批車，如果停的是<b>平面車位</b>？右邊亮了。同一個需求再來一次：取一台停在深處的車。');
+ flatShown=true;
+ Object.keys(meshes.F).forEach(function(p){meshes.F[p].visible=true});
+ document.getElementById('b-flat-row').style.display='block';
+ document.getElementById('code-flat').style.display='block';
+ await pose('duel');
+ await wait(1200);
+ /* 取巷道「還在深處」的住戶（不是剛遞補到巷口的那台），左右同拍對決才有對比 */
+ var duelCar=lotA.normal.s[2]||lotA.normal.s[1]||lotA.normal.s[0];
+ var mv2=0;
+ if(duelCar)mv2=await opLeave(duelCar.plate);
+ cue('同一個需求：左邊又挪了 <b>'+mv2+' 台</b>，右邊<b>挪車 0 台</b>、直接開走。這就是這份作業真正教的事：<b>資料結構的選擇，就是你在門口等多久</b>。換你來。');
+ await wait(2000);
+ endTour()}
+function endTour(){toured=true;touring=false;INSTANT=REDUCED;
+ document.getElementById('btn-skip').style.display='none';
+ document.getElementById('deck').style.display='block';
+ document.getElementById('foot').style.display='block';
+ document.getElementById('bill').style.display='block';
+ document.getElementById('b-flat-row').style.display='block';
+ document.getElementById('code-flat').style.display='block';
+ flatShown=true;
+ Object.keys(meshes.F).forEach(function(p){meshes.F[p].visible=true});
+ cue(null);pose('console')}
+
+/* ══ Act II：操作台 ══ */
+async function guarded(fn){
+ if(busy){cue('上一個動作還在跑，等它停穩。');return}
+ if(touring&&!toured)return;busy=true;
+ try{await fn()}finally{busy=false;refreshLedger()}}
+document.getElementById('op-enter').onclick=function(){guarded(async function(){
+ var dis=document.getElementById('op-dis').checked;
+ var p=synthPlate();
+ cue('<span class="plate">'+p+'</span>'+(dis?'（身障車）':'')+' 進場。');
+ var ev=await opEnter(p,dis);
+ var last=ev[ev.length-1];
+ if(last.t==='queue')cue('場內滿了，<span class="plate">'+p+'</span> 排入等待區（佇列）。');
+ else if(last.t==='reject')cue('等待區也滿了：<span class="plate">'+p+'</span> 被拒收。原系統就是這樣寫的。');
+ else cue(null)})};
+document.getElementById('op-deep').onclick=function(){guarded(async function(){
+ var deepest=lotA.normal.s[0]||lotA.dis.s[0];
+ if(!deepest){cue('場內沒有車。先進幾台吧。');return}
+ var p=deepest.plate;
+ cue('取<b>最深</b>的 <span class="plate">'+p+'</span>：巷道這邊要開始挪了。');
+ var mv=await opLeave(p);
+ cue('取 <span class="plate">'+p+'</span>：巷道挪了 <b>'+mv+' 台</b>，平面挪了 <b>0 台</b>。')})};
+document.getElementById('op-reset').onclick=function(){guarded(async function(){
+ newWorld();cue('清空。同一批規則，重新開始。');await wait(800);cue(null)})};
+
+/* 點車取車 */
+var ray=new THREE.Raycaster(),ptr=new THREE.Vector2();
+cv.addEventListener('pointerdown',function(e){
+ if(!toured||busy)return;
+ ptr.x=e.clientX/innerWidth*2-1;ptr.y=-(e.clientY/innerHeight)*2+1;
+ ray.setFromCamera(ptr,camera);
+ var all=[];['A','F'].forEach(function(s){Object.keys(meshes[s]).forEach(function(p){all.push(meshes[s][p])})});
+ var hits=ray.intersectObjects(all,true);
+ if(!hits.length)return;
+ var gp=hits[0].object;while(gp.parent&&!gp.userData.plate)gp=gp.parent;
+ var plate=gp.userData.plate;
+ if(gp.userData.q!==undefined){cue('<span class="plate">'+plate+'</span> 還在排隊，還沒進場。');return}
+ guarded(async function(){
+  cue('取 <span class="plate">'+plate+'</span>…');
+  var mv=await opLeave(plate);
+  cue('取 <span class="plate">'+plate+'</span>：巷道挪了 <b>'+mv+' 台</b>，平面 <b>0 台</b>。')})});
+
+/* 紀錄簿（BST 中序） */
+var ledger=document.getElementById('ledger');
+function refreshLedger(){if(ledger.style.display!=='flex')return;
+ var bd=document.getElementById('ledger-bd');bd.innerHTML='';
+ var nodes=tree.inorder();
+ if(!nodes.length){bd.innerHTML='<div class="ent tm">（尚無紀錄）</div>';return}
+ nodes.forEach(function(n){var h='<div class="ent"><span class="pl">'+n.plate+'</span>';
+  n.recs.forEach(function(r){h+='<div class="tm">進 '+r.in+' · 離 '+(r.out||'（尚未離場）')+'</div>'});
+  bd.appendChild(Object.assign(document.createElement('div'),{innerHTML:h+'</div>'}).firstChild)})}
+document.getElementById('op-ledger').onclick=function(){
+ ledger.style.display=ledger.style.display==='flex'?'none':'flex';refreshLedger()};
+var codeOn=true;
+document.getElementById('op-code').onclick=function(){codeOn=!codeOn;
+ this.className=codeOn?'on-tgl':'';
+ document.getElementById('code').style.display='none';   /* 關掉立即藏；開著則下一步自動再現 */
+};
+document.getElementById('op-ledger-x').onclick=function(){ledger.style.display='none'};
+
+/* ══ 入口 ══ */
+document.getElementById('btn-tour').onclick=function(){tour()};
+document.getElementById('btn-skip0').onclick=function(){INSTANT=true;tour()};
+document.getElementById('btn-skip').onclick=function(){INSTANT=true;flushAnim()};
+if(REDUCED){INSTANT=true;setTimeout(tour,300)}
+else setTimeout(function(){if(!touring&&!toured)tour()},2600);
+try{window.__spdf=function(f){SPDF=f};
+ window.__tour=function(){if(!touring){toured=false;newWorld();INSTANT=false;
+ document.getElementById('deck').style.display='none';flatShown=false;
+ document.getElementById('b-flat-row').style.display='none';tour()}};
+ window.__state=function(){var rots={};Object.keys(meshes.A).forEach(function(p){
+   rots[p]=+(meshes.A[p].rotation.y).toFixed(2)});
+  return{alley:lotA.normal.s.length,dis:lotA.dis.s.length,
+  queue:lotA.wait.q.length,flat:lotF.slots.filter(Boolean).length,bills:bills,toured:toured,rots:rots}};}catch(e){}
+</script>
+</body>
+</html>
