@@ -106,8 +106,15 @@ button.on-tgl{border-color:var(--paint);color:var(--paint)}   /* 開關型按鈕
 .ledger .pl{font-family:ui-monospace,Consolas,monospace;letter-spacing:.08em;color:var(--paint)}
 .ledger .tm{color:var(--muted);font-size:11px}
 
-.foot{position:fixed;left:16px;bottom:14px;font-size:9.5px;color:var(--muted);max-width:46ch;line-height:1.6;display:none}
+/* 免責聲明卡在操作台左邊的縫裡：縫寬＝(100vw − 760)/2 − 16，窄於 1278px 就會壓到按鈕上。
+   夾住寬度，縫不夠寬就整條移到操作台上方。 */
+.foot{position:fixed;left:16px;bottom:14px;font-size:9.5px;color:var(--muted);
+  width:min(46ch,calc(50vw - 404px));line-height:1.6;display:none}
+@media(max-width:1120px){
+  .foot{left:50%;transform:translateX(-50%);width:calc(100% - 24px);max-width:760px;bottom:112px}
+}
 
+@media(max-width:1120px){ .cue{bottom:152px} }
 @media(max-width:640px){
   .title{top:10vh}
   .bill{top:34px}
@@ -250,81 +257,151 @@ var renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;
-var scene=new THREE.Scene();scene.background=new THREE.Color(0x0d0d10);
+var scene=new THREE.Scene();
+/* 夜空：不是純黑。往上收成藍黑、貼地一層城市光害——先給場景「有天有地」，
+   純黑背景是三件事裡最像 three.js 範例的那件 */
+scene.background=(function(){
+ var c=document.createElement('canvas');c.width=8;c.height=512;var g=c.getContext('2d');
+ var gr=g.createLinearGradient(0,0,0,512);
+ gr.addColorStop(0,'#0a0c15');gr.addColorStop(.52,'#12161f');
+ gr.addColorStop(.80,'#1d2130');gr.addColorStop(.93,'#33272a');
+ gr.addColorStop(1,'#0e0e11');
+ g.fillStyle=gr;g.fillRect(0,0,8,512);
+ var t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;
+ t.mapping=THREE.EquirectangularReflectionMapping;return t})();
 var camera=new THREE.PerspectiveCamera(42,1,0.1,300);
-scene.add(new THREE.AmbientLight(0x8890a8,0.5));
-var moon=new THREE.DirectionalLight(0xaab4cc,1.0);moon.position.set(-18,30,14);
+/* 天光／地面反彈取代死板的 AmbientLight：暗部才有顏色，不會整片糊成灰。
+   r155 之後燈光是物理單位，強度要比舊寫法大得多，不然暗部直接死黑。 */
+scene.add(new THREE.HemisphereLight(0x44608c,0x16110f,2.1));
+scene.add(new THREE.AmbientLight(0x7c88a4,0.35));
+var moon=new THREE.DirectionalLight(0xa8bcd8,1.9);moon.position.set(-18,30,14);
 moon.castShadow=true;moon.shadow.mapSize.set(2048,2048);
 moon.shadow.camera.left=-26;moon.shadow.camera.right=26;
 moon.shadow.camera.top=22;moon.shadow.camera.bottom=-22;
 moon.shadow.camera.far=80;moon.shadow.bias=-0.0004;
 scene.add(moon);
-var sodium=new THREE.PointLight(0xF2B824,90,40,1.8);sodium.position.set(-10.5,8.5,-12);scene.add(sodium);
+/* 鈉燈「一排」而不是一盞：真的停車場是重複的燈具陣列，
+   單一聚光燈打在黑地上＝產品渲染圖的打光，不是場所的打光。
+   燈桿幾何在 models/lot.glb 裡（Blender 生的），這裡只留燈光本身與朝下的發光面。 */
+var LAMPS=[[-18.6,-15.6],[-4.5,-15.6],[9,-15.6],[21,-7],[-14,14.6],[4,14.6],[19,14.6]];
+LAMPS.forEach(function(L){
+ var dir=L[1]<0?1:-1;
+ var glow=new THREE.Mesh(new THREE.PlaneGeometry(0.44,0.26),
+  new THREE.MeshBasicMaterial({color:0xffd6a0}));
+ glow.rotation.x=Math.PI/2;glow.position.set(L[0],6.36,L[1]+dir*1.15);scene.add(glow);
+ var pl=new THREE.PointLight(0xffc98a,58,28,2);
+ pl.position.set(L[0],6.3,L[1]+dir*1.15);scene.add(pl)});
 /* 夜間微弱環境反射：車漆才有金屬感（PMREM＋RoomEnvironment，強度壓低） */
 var pmrem=new THREE.PMREMGenerator(renderer);
 var envTex=pmrem.fromScene(new RoomEnvironment(),0.04).texture;
 
-/* 地坪：一張手繪 CanvasTexture 畫掉所有標線與漆字 */
+/* 地坪、標線、圍牆、緣石、分隔島、燈桿：整組來自 models/lot.glb
+   （Blender 生成，原始腳本 G:\Projects\parking-lot\build_site_lot.py，
+     依本站座標系下料——alleySlot／disSlot／flatSlot／queueSlot 直接抄過去）。
+   這裡只留一張「漆字」透明疊層：中文字型進不了 glTF，留在 canvas 才畫得出來。 */
 var GW=46,GD=34;                                     /* 地面 46×34，x∈[-23,23]、z∈[-17,17] */
 function px(x){return (x+GW/2)/GW*2048}
 function pz(z){return (z+GD/2)/GD*1514}
-function paintFloor(){
- var c=document.createElement('canvas');c.width=2048;c.height=1514;var g=c.getContext('2d');
- g.fillStyle='#17171a';g.fillRect(0,0,2048,1514);
- for(var i=0;i<2600;i++){g.fillStyle='rgba(255,255,255,'+(Math.random()*0.03)+')';
-  g.fillRect(Math.random()*2048,Math.random()*1514,2,2);}
- /* 街道帶 */
- g.fillStyle='#1d1d21';g.fillRect(0,pz(5.5),2048,pz(13)-pz(5.5));
- g.strokeStyle='rgba(233,230,223,.5)';g.lineWidth=4;g.setLineDash([40,30]);
- g.beginPath();g.moveTo(0,pz(9.2));g.lineTo(2048,pz(9.2));g.stroke();g.setLineDash([]);
- function slotRect(x0,z0,w,d,dash){g.strokeStyle='rgba(233,230,223,.75)';g.lineWidth=5;
-  if(dash)g.setLineDash([26,18]);g.strokeRect(px(x0),pz(z0),px(x0+w)-px(x0),pz(z0+d)-pz(z0));g.setLineDash([])}
- function label(tx,x,z,size,col,rot){g.save();g.translate(px(x),pz(z));if(rot)g.rotate(rot);
-  g.fillStyle=col;g.font='700 '+size+'px sans-serif';g.textAlign='center';g.fillText(tx,0,0);g.restore()}
- /* 巷道（堆疊）：黃邊線＋五格 */
- g.strokeStyle='#F2B824';g.lineWidth=7;
- g.strokeRect(px(-10.3),pz(-14.3),px(-6.7)-px(-10.3),pz(0.6)-pz(-14.3));
- for(var s=0;s<5;s++)slotRect(-10,(-12.6+s*2.9)-1.25,3.3,2.5,true);
- label('單巷道・堆疊 STACK',-8.5,2.9,30,'rgba(242,184,36,.85)');
- label('▲ 巷口',-8.5,1.5,26,'rgba(233,230,223,.5)');
- /* 暫存區：黃斜線 */
- g.save();g.beginPath();g.rect(px(-15.6),pz(-14.3),px(-12.2)-px(-15.6),pz(0.6)-pz(-14.3));g.clip();
- g.strokeStyle='rgba(242,184,36,.28)';g.lineWidth=6;
- for(var h=-30;h<40;h++){g.beginPath();g.moveTo(px(-15.6)+h*36,pz(-14.3));g.lineTo(px(-15.6)+h*36+220,pz(0.6));g.stroke()}
- g.restore();
- g.strokeStyle='rgba(242,184,36,.5)';g.lineWidth=4;
- g.strokeRect(px(-15.6),pz(-14.3),px(-12.2)-px(-15.6),pz(0.6)-pz(-14.3));
- label('暫存 TEMP',-13.9,2.9,26,'rgba(242,184,36,.6)');
- /* 身障×2 */
- for(var d2=0;d2<2;d2++){slotRect(-5.6,(-1-d2*2.9)-1.25,3.3,2.5,false);
-  label('身障',-3.95,(-1-d2*2.9)+0.4,30,'rgba(233,230,223,.6)')}
- /* 平面（隨機存取）：七格朝街 */
- for(var f=0;f<7;f++){var fx=1.5+f*2.7;slotRect(fx-1.25,-4.9,2.5,3.4,false);
-  if(f>=5)label('身障',fx,-3,26,'rgba(233,230,223,.6)')}
- label('平面・隨機存取 RANDOM ACCESS',10.6,-6.3,42,'rgba(233,230,223,.6)');
- /* 等待區（佇列）：左＝巷道側、右＝平面側 */
- for(var q=0;q<5;q++){var qx=-16+q*3.2;slotRect(qx-1.4,10.4,2.8,2.6,true)}
- for(var q2=0;q2<5;q2++){var qx2=2+q2*3.2;slotRect(qx2-1.4,10.4,2.8,2.6,true)}
- label('等待區 QUEUE ▸',-9.5,14.6,38,'rgba(233,230,223,.55)');
- label('等待區 QUEUE ▸',8.5,14.6,38,'rgba(233,230,223,.55)');
- label('P',17.5,13.4,240,'rgba(233,230,223,.07)');
- var tex=new THREE.CanvasTexture(c);tex.anisotropy=8;return tex}
-var ground=new THREE.Mesh(new THREE.PlaneGeometry(GW,GD),
- new THREE.MeshLambertMaterial({map:paintFloor()}));
-ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
-/* 圍牆（北面＋西面，混凝土） */
-var wallM=new THREE.MeshLambertMaterial({color:0x2f2f36});
-var wallN=new THREE.Mesh(new THREE.BoxGeometry(GW,3.2,0.6),wallM);wallN.position.set(0,1.6,-GD/2);scene.add(wallN);
-var wallW=new THREE.Mesh(new THREE.BoxGeometry(0.6,3.2,GD),wallM);wallW.position.set(-GW/2,1.6,0);scene.add(wallW);
-/* 燈桿 */
-var pole=new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.12,8.6,6),new THREE.MeshLambertMaterial({color:0x3a3a40}));
-pole.position.set(-11.9,4.3,-14.4);scene.add(pole);
-var lampHead=new THREE.Mesh(new THREE.BoxGeometry(0.9,0.22,0.5),new THREE.MeshBasicMaterial({color:0xF2B824}));
-lampHead.position.set(-11.9,8.7,-14.4);scene.add(lampHead);
+var PAINT_Y='242,184,36', PAINT_W='226,222,212';
+function paintLabels(){
+ var c=document.createElement('canvas');c.width=2048;c.height=1514;var p=c.getContext('2d');
+ function label(tx,x,z,size,col){p.save();p.translate(px(x),pz(z));
+  p.fillStyle=col;p.font='700 '+size+"px Archivo,'Noto Sans TC',sans-serif";
+  p.textAlign='center';p.fillText(tx,0,0);p.restore()}
+ label('單巷道・堆疊 STACK',-8.5,2.7,26,'rgba('+PAINT_Y+',.6)');
+ label('▲ 巷口',-8.5,1.4,20,'rgba('+PAINT_W+',.4)');
+ label('暫存 TEMP',-13.9,2.7,20,'rgba('+PAINT_W+',.34)');
+ for(var d2=0;d2<2;d2++)label('身障',-3.95,(-1-d2*2.9)+0.4,26,'rgba('+PAINT_W+',.44)');
+ for(var f=5;f<7;f++)label('身障',1.5+f*2.7,-3,22,'rgba('+PAINT_W+',.44)');
+ label('平面・隨機存取 RANDOM ACCESS',10.6,-6.2,34,'rgba('+PAINT_W+',.42)');
+ label('等待區 QUEUE ▸',-9.5,14.5,30,'rgba('+PAINT_W+',.4)');
+ label('等待區 QUEUE ▸',8.5,14.5,30,'rgba('+PAINT_W+',.4)');
+ label('P',17.5,13.4,240,'rgba('+PAINT_W+',.055)');
+ /* 磨損：地坪漆是會被輪胎輾掉的。全新的漆＝CG 感 */
+ p.globalCompositeOperation='destination-out';
+ for(var w=0;w<240;w++){var wx=Math.random()*2048,wz=Math.random()*1514,wr=6+Math.random()*46;
+  var wg2=p.createRadialGradient(wx,wz,0,wx,wz,wr);
+  wg2.addColorStop(0,'rgba(0,0,0,'+(0.25+Math.random()*0.6)+')');wg2.addColorStop(1,'rgba(0,0,0,0)');
+  p.fillStyle=wg2;p.fillRect(wx-wr,wz-wr,wr*2,wr*2)}
+ var tex=new THREE.CanvasTexture(c);tex.anisotropy=8;tex.colorSpace=THREE.SRGBColorSpace;return tex}
+var labelMat=new THREE.MeshBasicMaterial({map:paintLabels(),transparent:true,depthWrite:false});
+var labels=new THREE.Mesh(new THREE.PlaneGeometry(GW,GD),labelMat);
+labels.rotation.x=-Math.PI/2;labels.position.y=0.129;labels.renderOrder=1;scene.add(labels);
+/* 字體載完再重畫一次（首刷時 Archivo 還沒下載完，會退回系統 sans） */
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(function(){
+ var old=labelMat.map;labelMat.map=paintLabels();labelMat.needsUpdate=true;if(old)old.dispose()});
+/* 牆後的街廓量體：夜裡看得到的是輪廓與零星幾扇亮著的窗，不是純黑 */
+var bldM=new THREE.MeshStandardMaterial({color:0x24252f,roughness:.95,metalness:0});
+[[-30,16,15,-30],[-8,22,13,-31],[13,13,17,-30],[31,18,14,-29],[-26,11,12,26],[16,9,15,27]]
+ .forEach(function(B){
+  var bd=new THREE.Mesh(new THREE.BoxGeometry(B[2],B[1],B[2]*0.8),bldM);
+  bd.position.set(B[0],B[1]/2,B[3]);scene.add(bd);
+  for(var wI=0;wI<7;wI++){if(Math.random()>.42)continue;
+   var lw=new THREE.Mesh(new THREE.PlaneGeometry(0.8,1.1),
+    new THREE.MeshBasicMaterial({color:Math.random()<.6?0xffd28a:0xa9c4e0}));
+   lw.position.set(B[0]-B[2]/2+1+Math.random()*(B[2]-2),2+Math.random()*(B[1]-3),
+    B[3]+(B[3]<0?B[2]*0.4+0.02:-(B[2]*0.4+0.02)));
+   if(B[3]>0)lw.rotation.y=Math.PI;scene.add(lw)}});
 
-/* ── 車模：Kenney Car Kit（CC0，models/；載不到就退回手拼方盒車） ── */
+/* ── Blender 生成的立體配件：圓端分隔島、車擋、外圍緣石 ──
+   models/lot.glb 由 G:\Projects\parking-lot\build_site_lot.py 依「本站自己的座標系」下料
+   （alleySlot／disSlot／flatSlot 直接抄過去），所以疊上來不會動到任何動畫座標。
+   真實停車場的立體語彙就是這三樣；只有漆線沒有緣石，地面永遠像一張貼了圖的平板。 */
+new GLTFLoader().load('models/lot.glb',function(g){
+ g.scene.traverse(function(o){if(!o.isMesh)return;
+  o.castShadow=true;o.receiveShadow=true;
+  (Array.isArray(o.material)?o.material:[o.material]).forEach(function(m){
+   if(!m)return;
+   if('roughness' in m){m.roughness=0.92;m.metalness=0.02}
+   m.envMap=envTex;m.envMapIntensity=0.3;m.needsUpdate=true})});
+ scene.add(g.scene)},undefined,function(e){console.warn('lot.glb 載入失敗，退回純地坪',e)});
+
+/* ── 車模：Kenney Car Kit（CC0，models/；載不到就退回手拼方盒車） ──
+   Kenney 全套車共用一張色票圖 Textures/colormap.png，車身顏色是靠 UV 指到色票，
+   不是靠 material.color——所以改 material.color 沒有用。正確的施力點是「重新調色那張色票」：
+   一張圖改完，八台車全部一起改，而且窗、輪胎、燈的區分都還在。 */
+function nightPalette(img){
+ var c=document.createElement('canvas');c.width=img.width;c.height=img.height;
+ var g=c.getContext('2d');g.drawImage(img,0,0);
+ var d=g.getImageData(0,0,c.width,c.height),a=d.data;
+ function hue2rgb(p2,q2,t){if(t<0)t+=1;if(t>1)t-=1;
+  if(t<1/6)return p2+(q2-p2)*6*t;if(t<1/2)return q2;
+  if(t<2/3)return p2+(q2-p2)*(2/3-t)*6;return p2}
+ for(var i=0;i<a.length;i+=4){
+  var r=a[i]/255,gr=a[i+1]/255,b=a[i+2]/255;
+  var mx=Math.max(r,gr,b),mn=Math.min(r,gr,b),l=(mx+mn)/2,s=0,h=0,dd=mx-mn;
+  if(dd>0.0001){s=l>0.5?dd/(2-mx-mn):dd/(mx+mn);
+   h=(mx===r?((gr-b)/dd+(gr<b?6:0)):mx===gr?((b-r)/dd+2):((r-gr)/dd+4))/6}
+  var nh=h,ns,nl;
+  /* 玻璃：Kenney 把車窗畫成大片近白／淺藍，那是最強的玩具訊號之一。
+     夜裡的車窗幾乎是黑的，只有一點天光的藍。 */
+  var glass=(l>0.55&&h>0.45&&h<0.72)||(s<=0.18&&l>0.72);
+  if(glass){nh=0.60; ns=0.17; nl=0.085+(l-0.55)*0.12}
+  else if(s>0.18){                  /* 車身烤漆：留住色相，把飽和度輾平、亮度壓進夜色 */
+   ns=0.075+s*0.075; nl=0.09+l*0.34}
+  else{                             /* 輪胎、底盤、暗部：帶一點冷調的黑 */
+   nh=0.62; ns=0.05; nl=l*0.72}
+  var q=nl<0.5?nl*(1+ns):nl+ns-nl*ns,pp=2*nl-q;
+  a[i]=hue2rgb(pp,q,nh+1/3)*255;a[i+1]=hue2rgb(pp,q,nh)*255;a[i+2]=hue2rgb(pp,q,nh-1/3)*255}
+ g.putImageData(d,0,0);
+ var t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;
+ t.flipY=false;t.anisotropy=8;t.needsUpdate=true;return t}
+var CARTEX=null,CARTEX_READY=new Promise(function(res){
+ var im=new Image();im.onload=function(){try{CARTEX=nightPalette(im)}catch(e){}res()};
+ im.onerror=function(){res()};im.src='models/Textures/colormap.png'});
+/* 接觸陰影：shadow map 在這個尺度下太軟，車會像浮在地上。補一塊烘焙好的暗斑。 */
+var BLOBTEX=(function(){var c=document.createElement('canvas');c.width=c.height=128;
+ var g=c.getContext('2d');var gr=g.createRadialGradient(64,64,4,64,64,64);
+ gr.addColorStop(0,'rgba(0,0,0,.72)');gr.addColorStop(.42,'rgba(0,0,0,.36)');
+ gr.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=gr;g.fillRect(0,0,128,128);
+ var t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t})();
+var BLOBGEO=new THREE.PlaneGeometry(2.2,3.2);
+var BLOBMAT=new THREE.MeshBasicMaterial({map:BLOBTEX,transparent:true,depthWrite:false,opacity:.9});
+function contactShadow(){var m=new THREE.Mesh(BLOBGEO,BLOBMAT);
+ m.rotation.x=-Math.PI/2;m.position.y=0.014;m.renderOrder=-1;return m}
+
 var MODELN=['sedan','sedan-sports','hatchback-sports','suv','suv-luxury','taxi','truck'];
-var LIB={},MODELS_READY=(function(){
+var LIB={},MODELS_READY=CARTEX_READY.then(function(){
  var loader=new GLTFLoader();
  function one(name){return new Promise(function(res){
   loader.load('models/'+name+'.glb',function(g){
@@ -337,18 +414,30 @@ var LIB={},MODELS_READY=(function(){
    var k=2.4/Math.max(s2.z,0.001);wrap.scale.setScalar(k);
    var b3=new THREE.Box3().setFromObject(wrap),c3=b3.getCenter(new THREE.Vector3());
    tpl.position.x-=c3.x/k;tpl.position.z-=c3.z/k;tpl.position.y-=b3.min.y/k;
-   wrap.traverse(function(o){if(o.isMesh){o.castShadow=true;
-    if(o.material){o.material.envMap=envTex;o.material.envMapIntensity=0.35}}});
+   wrap.traverse(function(o){if(!o.isMesh)return;
+    o.castShadow=true;o.receiveShadow=true;
+    (Array.isArray(o.material)?o.material:[o.material]).forEach(function(m){
+     if(!m)return;
+     if(CARTEX)m.map=CARTEX;                 /* ← 換掉玩具色票 */
+     if('roughness' in m){m.roughness=0.44;m.metalness=0.22}
+     m.envMap=envTex;m.envMapIntensity=0.55;m.needsUpdate=true})});
    LIB[name]=wrap;res()},undefined,function(){res()})})}   /* 單台失敗不擋全場 */
- return Promise.all(MODELN.concat(['van']).map(one))})();
+ return Promise.all(MODELN.concat(['van']).map(one))});
 /* 網路卡住最多等 8 秒，之後用方盒車開演 */
 var MODELS_GATE=Promise.race([MODELS_READY,new Promise(function(r){setTimeout(r,8000)})]);
 var carN=0;
+/* 真實的停車場是「同款車重複出現」，不是八種車輪流各一台。
+   原本的 carN%MODELN.length 保證絕不重複——那是程式的節奏，不是停車場的節奏。 */
+var MODELW=[['sedan',.30],['suv',.24],['sedan-sports',.15],['hatchback-sports',.13],
+            ['suv-luxury',.08],['truck',.06],['taxi',.04]];
+function pickModel(){var r=Math.random(),acc=0;
+ for(var i=0;i<MODELW.length;i++){acc+=MODELW[i][1];if(r<acc)return MODELW[i][0]}
+ return 'sedan'}
 function buildCar(dis){
- var name=dis?'van':MODELN[carN%MODELN.length];
+ var name=dis?'van':pickModel();
  if(LIB[name]){carN++;
-  var gp=new THREE.Group();gp.add(LIB[name].clone(true));return gp}
- return buildBoxCar(dis)}
+  var gp=new THREE.Group();gp.add(LIB[name].clone(true));gp.add(contactShadow());return gp}
+ var bx=buildBoxCar(dis);bx.add(contactShadow());return bx}
 var CARCOLS=[0x8e9aa5,0xa58f7a,0x7a8f7d,0x9a8fa5,0xb0a08a,0x7d95a8,0xa88f8f,0x8fa89a];
 function buildBoxCar(dis){
  var col=dis?0x5d6f8f:CARCOLS[carN++%CARCOLS.length];
@@ -364,10 +453,21 @@ function buildBoxCar(dis){
  var lite=new THREE.Mesh(new THREE.BoxGeometry(0.9,0.12,0.06),new THREE.MeshBasicMaterial({color:0xfff3cf}));
  lite.position.set(0,0.52,1.22);gp.add(lite);
  return gp}
-/* 目標圈 */
-var ring=new THREE.Mesh(new THREE.RingGeometry(1.35,1.6,36),
- new THREE.MeshBasicMaterial({color:0xF2B824,side:THREE.DoubleSide,transparent:true,opacity:0.9}));
-ring.rotation.x=-Math.PI/2;ring.position.y=0.03;ring.visible=false;scene.add(ring);
+/* 目標標記：場上每一個標記都是漆在地上的，只有原本那顆會自轉的發光黃環是飄的——
+   旋轉選取環是 RTS／three.js demo 的標配，跟本站的地坪漆語彙不同語系。
+   改成漆上去的四角括號（跟 jetilabs 的 [WORK] 括號索引同一個手勢）。
+   另外原本 ring.rotation.z+=0.01 是「每幀」不是「每秒」：144Hz 螢幕上會轉 2.4 倍快。 */
+var ringMat=new THREE.MeshBasicMaterial({color:0xF2B824,side:THREE.DoubleSide,
+ transparent:true,opacity:0.9,depthWrite:false});
+var ring=new THREE.Group();
+(function(){var L=0.9,T=0.1,R=1.5;
+ [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(function(s){
+  var a=new THREE.Mesh(new THREE.PlaneGeometry(L,T),ringMat);
+  a.position.set(s[0]*(R-L/2),0,s[1]*R);
+  var b=new THREE.Mesh(new THREE.PlaneGeometry(T,L),ringMat);
+  b.position.set(s[0]*R,0,s[1]*(R-L/2));
+  [a,b].forEach(function(m){m.rotation.x=-Math.PI/2;ring.add(m)})})})();
+ring.position.y=0.022;ring.visible=false;scene.add(ring);
 
 /* ══ 位置表 ══ */
 var STREET=7,SPAWN={x:26,z:STREET},EXIT={x:-26,z:STREET};
@@ -525,6 +625,9 @@ async function opLeave(plate){
 var camTgt=new THREE.Vector3();
 var POSES={
  title:{p:[11,16,26],t:[-2,0,-2]},
+ /* TODO 構圖：這顆鏡頭從側面看巷道，畫面約七成是空柏油（改光改色救不了取景）。
+    試過拉近側視與蹲在巷口往深處看兩種，都會撞到西牆或街廓量體——
+    要真的解，得連同場地佈局一起挪（巷道往場中央移、西側留給鏡頭），不是只改座標。 */
  alley:{p:[-19,7.5,10],t:[-9,0,-7]},
  queue:{p:[-3,9,23],t:[-8,0,10]},
  duel:{p:[3,23,15],t:[0,0,-2]},
@@ -547,7 +650,7 @@ addEventListener('resize',resize);resize();
  for(var i=tweens.length-1;i>=0;i--){var tw=tweens[i];
   var p=Math.min(1,(performance.now()-tw.t0)/tw.dur);tw.fn(p);
   if(p>=1){tweens.splice(i,1);tw.res()}}
- ring.rotation.z+=0.01;
+ ringMat.opacity=REDUCED?0.85:0.55+0.35*Math.sin(t*0.005);   /* 依時間不依幀率 */
  camera.lookAt(camTgt);renderer.render(scene,camera)})();
 
 /* ══ UI 幕卡 ══ */
@@ -683,6 +786,9 @@ document.getElementById('btn-skip').onclick=function(){INSTANT=true;flushAnim()}
 if(REDUCED){INSTANT=true;setTimeout(tour,300)}
 else setTimeout(function(){if(!touring&&!toured)tour()},2600);
 try{window.__spdf=function(f){SPDF=f};
+ window.__pose=function(n,d){return pose(n,d)};
+ window.__ring=function(v,x,z){ring.visible=!!v;
+  if(x!==undefined){ring.position.x=x;ring.position.z=z}};
  window.__tour=function(){if(!touring){toured=false;newWorld();INSTANT=false;
  document.getElementById('deck').style.display='none';flatShown=false;
  document.getElementById('b-flat-row').style.display='none';tour()}};
