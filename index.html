@@ -25,9 +25,20 @@ body{background:var(--asphalt);color:var(--line);font-family:'Noto Sans TC',sans
 .mono{font-family:ui-monospace,'Cascadia Mono',Consolas,monospace;letter-spacing:.1em}
 #gl{position:fixed;inset:0;display:block}
 .ui{position:fixed;inset:0;pointer-events:none}
-.ui a,.ui button,.ui label,.ui .panel{pointer-events:auto}
+/* 面板本身必須吃掉指標事件，否則點在面板上會穿透到 canvas ＝ 誤觸「取那台車」，
+   而且 .ledger .bd（overflow-y:auto）在 pointer-events:none 之下根本捲不動。
+   原本這裡寫 .ui .panel —— 但整份 HTML 沒有任何元素有 panel 這個 class，
+   規則等於從來沒生效過（不是手機限定，桌機也一樣）。改成列出真正的類別，
+   以後改名會直接壞掉、看得見，而不是像 .panel 那樣無聲失效。 */
+.ui a,.ui button,.ui label,.ui input,
+.ui .mast,.ui .bill,.ui .code,.ui .cue,.ui .deck,.ui .ledger,.ui .foot{pointer-events:auto}
 
-.mast{position:fixed;top:14px;left:16px;right:16px;display:flex;justify-content:space-between;font-size:10px;color:var(--muted)}
+/* 頂列與帳單是唯二直接畫在 3D 上、沒有實底的文字。夜景不保證背後一定暗——
+   場上有鈉燈燈罩、亮著的窗、被月光打亮的混凝土，鏡頭一移對比就掉
+   （--paint #F2B824 壓在燈罩 #ffc98a 上只有 1.20:1）。用陰影撐住，
+   不加漸層底板：DESIGN.md 禁漸層裝飾，而且底板會破壞「漆在世界上」的語彙。 */
+.mast{position:fixed;top:14px;left:16px;right:16px;display:flex;justify-content:space-between;font-size:10px;color:var(--muted);
+  text-shadow:0 1px 3px rgba(20,20,22,.95),0 0 9px rgba(20,20,22,.85)}
 .mast b{color:var(--line);font-weight:400}
 
 /* 標題頁（漆字） */
@@ -51,7 +62,8 @@ button:disabled:hover{background:transparent;color:var(--line)}
 button.on-tgl{border-color:var(--paint);color:var(--paint)}   /* 開關型按鈕的「開」態 */
 
 /* 帳單讀數 */
-.bill{position:fixed;top:40px;right:16px;text-align:right;display:none}
+.bill{position:fixed;top:40px;right:16px;text-align:right;display:none;
+  text-shadow:0 2px 6px rgba(20,20,22,.95),0 0 14px rgba(20,20,22,.85)}
 .bill .row{margin-top:8px}
 .bill .k{font-size:10px;color:var(--muted);letter-spacing:.1em}
 .bill .v{font-family:ui-monospace,Consolas,monospace;font-size:clamp(22px,3vw,34px);color:var(--paint);
@@ -59,7 +71,10 @@ button.on-tgl{border-color:var(--paint);color:var(--paint)}   /* 開關型按鈕
 .bill .v.calm{color:var(--line)}
 
 /* 幕卡 */
-.cue{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);max-width:580px;width:calc(100% - 32px);
+/* 幕卡永遠疊在「底部堆疊」（操作台＋免責聲明，或導覽中的跳過鈕）上方。
+   --stackh 由 layoutStack() 實測，不是猜的斷點值——操作台的按鈕會換行，
+   高度隨字體載入與語言長度變動，寫死 bottom 一定會在某個寬度撞上。 */
+.cue{position:fixed;left:50%;bottom:calc(var(--stackh,150px) + 26px);transform:translateX(-50%);max-width:580px;width:calc(100% - 32px);
   background:var(--concrete);border:1px solid rgba(233,230,223,.25);padding:13px 16px;font-size:14.5px;
   display:none;transition:opacity .3s}
 .cue .tick{display:inline-block;width:9px;height:9px;background:var(--paint);margin-right:10px;vertical-align:1px}
@@ -95,7 +110,7 @@ button.on-tgl{border-color:var(--paint);color:var(--paint)}   /* 開關型按鈕
 .code .flat b{color:var(--paint);font-weight:400}
 
 /* 紀錄簿（BST） */
-.ledger{position:fixed;top:70px;right:16px;bottom:150px;width:min(330px,calc(100vw - 32px));
+.ledger{position:fixed;top:calc(var(--billb,70px) + 12px);right:16px;bottom:calc(var(--stackh,150px) + 20px);width:min(330px,calc(100vw - 32px));
   background:var(--concrete);border:1px solid rgba(233,230,223,.25);display:none;flex-direction:column}
 .ledger .hd{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;
   border-bottom:1px solid rgba(233,230,223,.18);font-size:10px;color:var(--muted);letter-spacing:.1em}
@@ -111,21 +126,48 @@ button.on-tgl{border-color:var(--paint);color:var(--paint)}   /* 開關型按鈕
 .foot{position:fixed;left:16px;bottom:14px;font-size:9.5px;color:var(--muted);
   width:min(46ch,calc(50vw - 404px));line-height:1.6;display:none}
 @media(max-width:1120px){
-  .foot{left:50%;transform:translateX(-50%);width:calc(100% - 24px);max-width:760px;bottom:112px}
+  .foot{left:50%;transform:translateX(-50%);width:calc(100% - 24px);max-width:760px;
+        bottom:calc(var(--deckh,150px) + 8px)}
 }
 
-@media(max-width:1120px){ .cue{bottom:152px} }
 @media(max-width:640px){
   .title{top:10vh}
   .bill{top:34px}
-  .ledger{bottom:210px}
   .mast .opt{display:none}
-  .cue{bottom:180px}
-  .foot{display:none!important}   /* endTour 會設 inline display，這裡必須壓過它 */
-  /* 手機版程式字條收成：動作＋邏輯＋當前那一行，讓開右上帳單 */
-  .code{width:calc(100vw - 32px);top:142px}
+  /* 免責聲明在手機上不能整條藏掉：憲法要求「車牌合成資料要標明」，
+     藏起來等於手機使用者永遠看不到。改成壓成兩行、貼在操作台上緣。 */
+  .foot{font-size:9px;line-height:1.5;max-height:2.9em;overflow:hidden}
+  /* 手機版操作台收窄：六顆按鈕在 375px 原本排成三列（202px＝畫面的 30%），
+     會把幕卡壓在底下。縮字級與內距後排兩列。 */
+  .deck{padding:9px 10px}
+  .deck .rowa{gap:6px}
+  .deck .rowa button{padding:10px 11px;font-size:12.5px;min-height:44px}  /* 觸控目標下限 */
+  .deck .hint{font-size:10.5px;margin-top:6px;line-height:1.5}
+  .title .go button,.skip{min-height:44px}
+  .ledger .hd button{min-width:44px;min-height:44px}
+  /* 字條原本 top:142 整寬——正好蓋住 3D 畫面正中央（實測操作台鏡頭下巷道 5 格
+     全部落在它後面）。改成停靠在底部堆疊上緣，只留「這一步在做什麼」＋高亮那行程式；
+     說明散文（.lg／.flat）在手機上與幕卡重複，收掉。 */
+  /* 鎖死高度：字條會因為動作名稱長短而長高，3D 可用帶就跟著浮動，
+     鏡頭沒辦法對著一個會變的框構圖。固定 96px，動作名稱單行截斷。 */
+  .code{width:calc(100vw - 32px);left:16px;top:auto;bottom:calc(var(--stackh,150px) + 8px);
+        height:96px;overflow:hidden}
+  .code .lg,.code .flat{display:none}
+  .code .op{padding:6px 12px 4px;font-size:12.5px;white-space:nowrap;
+            overflow:hidden;text-overflow:ellipsis}
   .code .ln:not(.hot){display:none}
   .code pre{padding:4px 0 6px}
+  /* 幕卡與字條是同一個資訊頻道，在 375px 上不該各佔一塊：共用同一格，
+     幕卡是暫時的，DOM 在字條之後所以會蓋在它上面。 */
+  .cue{bottom:calc(var(--stackh,150px) + 8px)}
+}
+
+/* 觸控裝置的目標下限 44×44（不看寬度看指標型態：平板橫放也是手指點） */
+@media(pointer:coarse){
+  button{min-height:44px}
+  .ledger .hd button{min-width:44px;min-height:44px}
+  .deck label{min-height:44px}
+  .deck input[type=checkbox]{width:20px;height:20px}
 }
 </style>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -286,9 +328,8 @@ scene.add(moon);
 var LAMPS=[[-18.6,-15.6],[-4.5,-15.6],[9,-15.6],[21,-7],[-14,14.6],[4,14.6],[19,14.6]];
 LAMPS.forEach(function(L){
  var dir=L[1]<0?1:-1;
- var glow=new THREE.Mesh(new THREE.PlaneGeometry(0.44,0.26),
-  new THREE.MeshBasicMaterial({color:0xffd6a0}));
- glow.rotation.x=Math.PI/2;glow.position.set(L[0],6.36,L[1]+dir*1.15);scene.add(glow);
+ /* 只留光源。發光的燈罩面已經在 lot.glb 裡（Blender 的 lot_lamplens，自發光材質）——
+    上一版在這裡再疊一片 MeshBasicMaterial，兩層蓋在一起會變成一張爆白的方卡。 */
  var pl=new THREE.PointLight(0xffc98a,58,28,2);
  pl.position.set(L[0],6.3,L[1]+dir*1.15);scene.add(pl)});
 /* 夜間微弱環境反射：車漆才有金屬感（PMREM＋RoomEnvironment，強度壓低） */
@@ -348,96 +389,99 @@ var bldM=new THREE.MeshStandardMaterial({color:0x24252f,roughness:.95,metalness:
    （alleySlot／disSlot／flatSlot 直接抄過去），所以疊上來不會動到任何動畫座標。
    真實停車場的立體語彙就是這三樣；只有漆線沒有緣石，地面永遠像一張貼了圖的平板。 */
 new GLTFLoader().load('models/lot.glb',function(g){
- g.scene.traverse(function(o){if(!o.isMesh)return;
+ g.scene.traverse(function(o){
+  /* 道閘臂桿要留住參照，車進出時抬桿。
+     用前綴比對不用全等：Blender 匯出時同名物件會被加上 .001 尾碼，
+     全等比對會在名稱撞號那天無聲失效（抬桿不會報錯，只是永遠不動）。 */
+  if(o.name&&o.name.indexOf('gate_in_arm')===0)GATES['in']=o;
+  if(o.name&&o.name.indexOf('gate_out_arm')===0)GATES['out']=o;
+  if(!o.isMesh)return;
   o.castShadow=true;o.receiveShadow=true;
   (Array.isArray(o.material)?o.material:[o.material]).forEach(function(m){
    if(!m)return;
-   if('roughness' in m){m.roughness=0.92;m.metalness=0.02}
+   /* 材質已在 Blender 逐項定好（柏油貼圖、鍍鋅鋼、混凝土、亮著的亭窗與燈罩）；
+      上一版在這裡把全場 roughness 一律壓成 0.92，鋼件與燈罩就跟著變成啞面水泥 */
+   if(m.map){m.map.anisotropy=8}
    m.envMap=envTex;m.envMapIntensity=0.3;m.needsUpdate=true})});
  scene.add(g.scene)},undefined,function(e){console.warn('lot.glb 載入失敗，退回純地坪',e)});
 
-/* ── 車模：Kenney Car Kit（CC0，models/；載不到就退回手拼方盒車） ──
-   Kenney 全套車共用一張色票圖 Textures/colormap.png，車身顏色是靠 UV 指到色票，
-   不是靠 material.color——所以改 material.color 沒有用。正確的施力點是「重新調色那張色票」：
-   一張圖改完，八台車全部一起改，而且窗、輪胎、燈的區分都還在。 */
-function nightPalette(img){
- var c=document.createElement('canvas');c.width=img.width;c.height=img.height;
- var g=c.getContext('2d');g.drawImage(img,0,0);
- var d=g.getImageData(0,0,c.width,c.height),a=d.data;
- function hue2rgb(p2,q2,t){if(t<0)t+=1;if(t>1)t-=1;
-  if(t<1/6)return p2+(q2-p2)*6*t;if(t<1/2)return q2;
-  if(t<2/3)return p2+(q2-p2)*(2/3-t)*6;return p2}
- for(var i=0;i<a.length;i+=4){
-  var r=a[i]/255,gr=a[i+1]/255,b=a[i+2]/255;
-  var mx=Math.max(r,gr,b),mn=Math.min(r,gr,b),l=(mx+mn)/2,s=0,h=0,dd=mx-mn;
-  if(dd>0.0001){s=l>0.5?dd/(2-mx-mn):dd/(mx+mn);
-   h=(mx===r?((gr-b)/dd+(gr<b?6:0)):mx===gr?((b-r)/dd+2):((r-gr)/dd+4))/6}
-  var nh=h,ns,nl;
-  /* 玻璃：Kenney 把車窗畫成大片近白／淺藍，那是最強的玩具訊號之一。
-     夜裡的車窗幾乎是黑的，只有一點天光的藍。 */
-  var glass=(l>0.55&&h>0.45&&h<0.72)||(s<=0.18&&l>0.72);
-  if(glass){nh=0.60; ns=0.17; nl=0.085+(l-0.55)*0.12}
-  else if(s>0.18){                  /* 車身烤漆：留住色相，把飽和度輾平、亮度壓進夜色 */
-   ns=0.075+s*0.075; nl=0.09+l*0.34}
-  else{                             /* 輪胎、底盤、暗部：帶一點冷調的黑 */
-   nh=0.62; ns=0.05; nl=l*0.72}
-  var q=nl<0.5?nl*(1+ns):nl+ns-nl*ns,pp=2*nl-q;
-  a[i]=hue2rgb(pp,q,nh+1/3)*255;a[i+1]=hue2rgb(pp,q,nh)*255;a[i+2]=hue2rgb(pp,q,nh-1/3)*255}
- g.putImageData(d,0,0);
- var t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;
- t.flipY=false;t.anisotropy=8;t.needsUpdate=true;return t}
-var CARTEX=null,CARTEX_READY=new Promise(function(res){
- var im=new Image();im.onload=function(){try{CARTEX=nightPalette(im)}catch(e){}res()};
- im.onerror=function(){res()};im.src='models/Textures/colormap.png'});
+/* ── 車模：Blender 建的 W202（models/w202.glb ＝ sedan、w202t.glb ＝ T-Modell 旅行車）──
+   上一版是 Kenney Car Kit。那組車的問題不是顏色而是「比例」：車身矮、輪拱圓、
+   沒有底盤、沒有門縫、車窗是大片淺色——所以上一版花了一整支 nightPalette() 去重調它的
+   色票，那是在幫玩具化妝，治不好比例。這一版整台在 Blender 下料，尺寸照實車：
+   全長 4487 / 全寬 1720 / 全高 1414 / 軸距 2690mm、輪胎 195/65R15、輪距前 1473 後 1457。
+   車身以 26 道斷面放樣，折線位置放成對支撐斷面，細分之後引擎蓋與車頂才是平的；
+   玻璃／黑柱是材質分區，DLO 邊界隨高度斜走（A 柱下前上後、C 柱下後上前）。
+   匯出時已把車頭轉到 +z（本站慣例），所以這裡不需要再補旋轉。 */
 /* 接觸陰影：shadow map 在這個尺度下太軟，車會像浮在地上。補一塊烘焙好的暗斑。 */
 var BLOBTEX=(function(){var c=document.createElement('canvas');c.width=c.height=128;
  var g=c.getContext('2d');var gr=g.createRadialGradient(64,64,4,64,64,64);
  gr.addColorStop(0,'rgba(0,0,0,.72)');gr.addColorStop(.42,'rgba(0,0,0,.36)');
  gr.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=gr;g.fillRect(0,0,128,128);
  var t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t})();
-var BLOBGEO=new THREE.PlaneGeometry(2.2,3.2);
+var BLOBGEO=new THREE.PlaneGeometry(1.5,2.9);   /* 對齊 W202 車身投影（寬 0.92 × 長 2.4） */
 var BLOBMAT=new THREE.MeshBasicMaterial({map:BLOBTEX,transparent:true,depthWrite:false,opacity:.9});
 function contactShadow(){var m=new THREE.Mesh(BLOBGEO,BLOBMAT);
  m.rotation.x=-Math.PI/2;m.position.y=0.014;m.renderOrder=-1;return m}
 
-var MODELN=['sedan','sedan-sports','hatchback-sports','suv','suv-luxury','taxi','truck'];
-var LIB={},MODELS_READY=CARTEX_READY.then(function(){
+var CARBODY=['w202','w202t'];
+var LIB={},MODELS_READY=(function(){
  var loader=new GLTFLoader();
  function one(name){return new Promise(function(res){
   loader.load('models/'+name+'.glb',function(g){
-   var tpl=g.scene,box=new THREE.Box3().setFromObject(tpl),size=box.getSize(new THREE.Vector3());
-   var wrap=new THREE.Group();
-   /* 長邊轉到 z 軸、縮到車位長 2.4、貼地置中；Kenney 車頭原生朝 -z，加 π 翻成本站慣例 +z */
-   tpl.rotation.y=(size.x>size.z?Math.PI/2:0)+Math.PI;
-   wrap.add(tpl);
+   var tpl=g.scene,wrap=new THREE.Group();wrap.add(tpl);
+   /* 車模是以「公尺」建的（車長 4.487），縮到 2.6 → 0.58 倍，貼地置中。
+      2.6 不是 2.4：巷道車位間距 2.9，2.6 長剛好留 0.3 的車距（真停車場的樣子）；
+      而且車寬跟著變成 1.0，才填得滿地上重畫過的 1.62 寬車格。
+      2.4 的時候車只填四成格寬，看起來像小孩坐大人椅。 */
    var b2=new THREE.Box3().setFromObject(wrap),s2=b2.getSize(new THREE.Vector3());
-   var k=2.4/Math.max(s2.z,0.001);wrap.scale.setScalar(k);
+   var k=2.6/Math.max(s2.z,0.001);wrap.scale.setScalar(k);
    var b3=new THREE.Box3().setFromObject(wrap),c3=b3.getCenter(new THREE.Vector3());
    tpl.position.x-=c3.x/k;tpl.position.z-=c3.z/k;tpl.position.y-=b3.min.y/k;
    wrap.traverse(function(o){if(!o.isMesh)return;
     o.castShadow=true;o.receiveShadow=true;
+    /* roughness／metalness 已在 Blender 逐材質定好（車漆 0.26/0.9、玻璃 0.06/0.35、
+       胎 0.88/0、鋁圈 0.30/1.0），這裡不再一律覆蓋成同一組數字 */
     (Array.isArray(o.material)?o.material:[o.material]).forEach(function(m){
-     if(!m)return;
-     if(CARTEX)m.map=CARTEX;                 /* ← 換掉玩具色票 */
-     if('roughness' in m){m.roughness=0.44;m.metalness=0.22}
-     m.envMap=envTex;m.envMapIntensity=0.55;m.needsUpdate=true})});
+     if(!m)return;m.envMap=envTex;
+     m.envMapIntensity=(m.name==='W202_Glass')?1.15:0.55;m.needsUpdate=true})});
    LIB[name]=wrap;res()},undefined,function(){res()})})}   /* 單台失敗不擋全場 */
- return Promise.all(MODELN.concat(['van']).map(one))});
+ return Promise.all(CARBODY.map(one))})();
 /* 網路卡住最多等 8 秒，之後用方盒車開演 */
 var MODELS_GATE=Promise.race([MODELS_READY,new Promise(function(r){setTimeout(r,8000)})]);
 var carN=0;
-/* 真實的停車場是「同款車重複出現」，不是八種車輪流各一台。
-   原本的 carN%MODELN.length 保證絕不重複——那是程式的節奏，不是停車場的節奏。 */
-var MODELW=[['sedan',.30],['suv',.24],['sedan-sports',.15],['hatchback-sports',.13],
-            ['suv-luxury',.08],['truck',.06],['taxi',.04]];
-function pickModel(){var r=Math.random(),acc=0;
- for(var i=0;i<MODELW.length;i++){acc+=MODELW[i][1];if(r<acc)return MODELW[i][0]}
- return 'sedan'}
+/* 90 年代賓士的原廠色，全部壓進夜色。只有車漆換色：玻璃、胎、鋁圈、燈都共用同一份材質，
+   所以 clone 之後只複製 W202_Paint 這一顆，不會平白多出幾十份材質。 */
+var CARCOL=[0x9aa0a6,0x8d939a,0x2a2d33,0x1a1b1e,0x46262a,0x2a3d33,
+            0x27333f,0xb8b5ac,0x6e6455,0x7d8288,0x3a3f46,0x585c52];
+function tintCar(root,hex){
+ root.traverse(function(o){if(!o.isMesh)return;
+  var arr=Array.isArray(o.material)?o.material:[o.material];
+  var out=arr.map(function(m){
+   if(m&&m.name==='W202_Paint'){var c=m.clone();c.color.setHex(hex);return c}
+   return m});
+  o.material=Array.isArray(o.material)?out:out[0]})}
 function buildCar(dis){
- var name=dis?'van':pickModel();
- if(LIB[name]){carN++;
-  var gp=new THREE.Group();gp.add(LIB[name].clone(true));gp.add(contactShadow());return gp}
+ /* 旅行車佔約四分之一；身障車位固定給旅行車（原本是 van，現在全場都是同一台車的衍生車型） */
+ var name=dis?'w202t':(Math.random()<0.26?'w202t':'w202');
+ var tpl=LIB[name]||LIB['w202'];
+ if(tpl){carN++;
+  var gp=new THREE.Group(),c=tpl.clone(true);
+  tintCar(c,dis?0xb4b0a6:CARCOL[(Math.random()*CARCOL.length)|0]);
+  gp.add(c);gp.add(contactShadow());
+  /* 輪子是 GLB 裡的獨立節點，行進時要轉、轉彎時前輪要打角。
+     用 YXZ 順序：先套轉向(Y)再套滾動(X)，不然兩個角度會互相污染。 */
+  var ws=[];c.traverse(function(o){
+   if(o.name&&o.name.indexOf('Wheel_')===0){o.rotation.order='YXZ';ws.push(o)}});
+  gp.__wheels=ws;                       /* 不放 userData：spawnMesh 會整個蓋掉 userData */
+  return gp}
  var bx=buildBoxCar(dis);bx.add(contactShadow());return bx}
+/* 輪半徑：0.3172m × 0.535 ≈ 0.17 站上單位。滾動角＝行進距離 ÷ 半徑 */
+function roll(gp,d){var ws=gp.__wheels;if(!ws||!ws.length)return;
+ var a=d/0.17;for(var i=0;i<ws.length;i++)ws[i].rotation.x+=a}
+function steer(gp,a){var ws=gp.__wheels;if(!ws)return;
+ a=Math.max(-0.46,Math.min(0.46,a));
+ for(var i=0;i<ws.length;i++)if(ws[i].name.indexOf('Wheel_F')===0)ws[i].rotation.y=a}
 var CARCOLS=[0x8e9aa5,0xa58f7a,0x7a8f7d,0x9a8fa5,0xb0a08a,0x7d95a8,0xa88f8f,0x8fa89a];
 function buildBoxCar(dis){
  var col=dis?0x5d6f8f:CARCOLS[carN++%CARCOLS.length];
@@ -500,10 +544,25 @@ function driveTo(gp,pts,spd){                    /* 逐段開過去，車頭朝�
   if(dist<0.01)return;
   var ang=Math.atan2(dx,dz),a0=gp.rotation.y;
   var da=((ang-a0+Math.PI*3)%(Math.PI*2))-Math.PI;
-  return tween(0,1,140,function(k){gp.rotation.y=a0+da*ease(k)}).then(function(){
+  /* 轉向：打角在轉彎中段最大、兩端回正（1-|2k-1| 是個三角形波），
+     不是整段固定角度——固定角度看起來像輪子壞了 */
+  return tween(0,1,140,function(k){
+    gp.rotation.y=a0+da*ease(k);steer(gp,da*(1-Math.abs(2*k-1))*0.8)}).then(function(){
+   var rolled=0;
    return tween(0,1,dist/spd*1000,function(k){var e=ease(k);
-    gp.position.x=sx+dx*e;gp.position.z=sz+dz*e})})})});
+    gp.position.x=sx+dx*e;gp.position.z=sz+dz*e;
+    roll(gp,dist*e-rolled);rolled=dist*e})}).then(function(){steer(gp,0)})})});
  return p}
+/* 道閘：lot.glb 裡 gate_in_arm／gate_out_arm 是獨立節點，原點就在桿根樞紐上。
+   桿身沿 +z 伸出，所以繞 x 轉 -90° 就是抬起來。 */
+var GATES={},gateT={};
+function gateLift(w,up){var a=GATES[w];if(!a)return Promise.resolve();
+ var t0=a.rotation.x,t1=up?-1.44:0;
+ if(Math.abs(t1-t0)<0.01)return Promise.resolve();
+ return tween(0,1,up?420:560,function(k){a.rotation.x=t0+(t1-t0)*ease(k)})}
+function gatePass(w){                            /* 開了就先撐著，車一台接一台時不會忽上忽下 */
+ clearTimeout(gateT[w]);gateLift(w,true);
+ gateT[w]=setTimeout(function(){gateLift(w,false)},1700)}
 
 /* ══ 程式字條：每一步亮出背後那行課堂 Python（_src/ 原始碼節錄） ══ */
 var SNIP={
@@ -556,6 +615,7 @@ function spawnMesh(side,plate,dis){
  var gp=buildCar(dis);gp.position.set(SPAWN.x,0,SPAWN.z);gp.rotation.y=Math.atan2(-1,0);
  gp.userData={plate:plate,side:side};
  if(side==='F'&&!flatShown)gp.visible=false;
+ else gatePass('in');                              /* 有車進場才抬入口閘 */
  scene.add(gp);meshes[side][plate]=gp;return gp}
 function killMesh(side,plate){var gp=meshes[side][plate];
  if(gp){scene.remove(gp);delete meshes[side][plate]}}
@@ -580,6 +640,7 @@ async function playEvents(side,evs,lots){
    await driveTo(gp,[{x:qs.x+2.4,z:qs.z},qs]);   /* 沿路緣停正（車頭朝隊伍前方） */
   }else if(ev.t==='reject'){
    gp=meshes[side][ev.plate]||spawnMesh(side,ev.plate,ev.dis);
+   if(gp.visible)gatePass('out');
    await driveTo(gp,[{x:EXIT.x,z:STREET}],10);killMesh(side,ev.plate);
   }else if(ev.t==='moveOut'){
    gp=meshes[side][ev.plate];var ts=tempSlot(ev.tempIdx);
@@ -587,7 +648,8 @@ async function playEvents(side,evs,lots){
    billUp(side);
   }else if(ev.t==='exit'){
    gp=meshes[side][ev.plate];
-   if(gp){await driveTo(gp,[{x:gp.position.x,z:STREET},{x:EXIT.x,z:STREET}],10);killMesh(side,ev.plate)}
+   if(gp){if(gp.visible)gatePass('out');
+    await driveTo(gp,[{x:gp.position.x,z:STREET},{x:EXIT.x,z:STREET}],10);killMesh(side,ev.plate)}
   }else if(ev.t==='moveBack'){
    gp=meshes[side][ev.plate];
    var bk=side==='A'?(ev.area==='dis'?disSlot(ev.idx):alleySlot(ev.idx)):flatSlot(ev.idx);
@@ -632,19 +694,84 @@ var POSES={
  queue:{p:[-3,9,23],t:[-8,0,10]},
  duel:{p:[3,23,15],t:[0,0,-2]},
  console:{p:[7,15,22],t:[-1,0,0]}};
-var mob=false;
-function pose(name,dur){var P=POSES[name];
- var m=mob?1.45:1;
- var tx=P.p[0]*m,ty=P.p[1]*m,tz=P.p[2]*m;
- var p0=camera.position.clone(),t0=camTgt.clone();
+/* 直式（手機）自己一組鏡頭。原本只有「把橫式機位乘 1.45 往後拉」——
+   但拉遠不會改變主體在畫面上的落點，它照樣落在程式字條那一塊。
+   實測（把每個車位投影到 375×667 再跟面板矩形比對）舊的 console 鏡頭：
+   18 個主體只有 4 個看得到，巷道 5 格全部被字條蓋住——使用者按「取最深的車」，
+   帳單跳「挪車 4 台」，畫面上卻什麼都沒發生。
+   這組是用網格搜尋解出來的（方位角／仰角／距離／fov 全掃，先要命中再要主體夠大）。
+   關鍵是換方位角：從東南／西南看過去，平面排會往「深度」延伸而不是橫跨畫面，
+   正好吃直式的高度——console 的車長從 15px 變成 41px。
+   命中數：alley 9/9、duel 12/12、queue 6/7、console 15/18（平面排最遠三格仍在框外）。 */
+var POSES_P={
+ title:  {p:[16,23,38],     t:[-2,0,-2],      fov:52},
+ alley:  {p:[-8.3,11.2,13.2],t:[-11,0,-1.9],  fov:46},
+ queue:  {p:[5.2,12.5,-15.8],t:[-5.6,0,3],    fov:46},
+ duel:   {p:[-25,28.2,15.8], t:[-5.5,0,-0.5], fov:58},
+ console:{p:[20.7,25.4,21.1],t:[2.5,0,-0.5],  fov:58}};
+var mob=false,curPose='title';
+function poseOf(name){
+ var P=(mob&&POSES_P[name])||POSES[name];
+ var m=(mob&&POSES_P[name])?1:(mob?1.45:1);      /* 沒有直式版本的才退回舊的拉遠法 */
+ return {p:[P.p[0]*m,P.p[1]*m,P.p[2]*m],t:P.t,fov:P.fov||42}}
+function pose(name,dur){curPose=name;var P=poseOf(name);
+ var p0=camera.position.clone(),t0=camTgt.clone(),f0=camera.fov;
  return tween(0,1,dur===undefined?1700:dur,function(k){var e=ease(k);
-  camera.position.set(p0.x+(tx-p0.x)*e,p0.y+(ty-p0.y)*e,p0.z+(tz-p0.z)*e);
-  camTgt.set(t0.x+(P.t[0]-t0.x)*e,t0.y+(P.t[1]-t0.y)*e,t0.z+(P.t[2]-t0.z)*e)})}
+  camera.position.set(p0.x+(P.p[0]-p0.x)*e,p0.y+(P.p[1]-p0.y)*e,p0.z+(P.p[2]-p0.z)*e);
+  camTgt.set(t0.x+(P.t[0]-t0.x)*e,t0.y+(P.t[1]-t0.y)*e,t0.z+(P.t[2]-t0.z)*e);
+  camera.fov=f0+(P.fov-f0)*e;camera.updateProjectionMatrix()})}
+function snapPose(){var P=poseOf(curPose);
+ camera.position.set(P.p[0],P.p[1],P.p[2]);camTgt.set(P.t[0],P.t[1],P.t[2]);
+ camera.fov=P.fov;camera.updateProjectionMatrix()}
 camera.position.set(11,16,26);camTgt.set(-2,0,-2);
 
-function resize(){var w=innerWidth,h=innerHeight;
- renderer.setSize(w,h,false);camera.aspect=w/h;mob=w/h<0.85;camera.updateProjectionMatrix()}
-addEventListener('resize',resize);resize();
+function resize(){var w=innerWidth,h=innerHeight,was=mob;
+ renderer.setSize(w,h,false);camera.aspect=w/h;mob=w/h<0.85;
+ camera.updateProjectionMatrix();
+ if(was!==mob)snapPose()}     /* 轉向時直接切到該方向的機位，不要用舊機位硬撐 */
+addEventListener('resize',resize);resize();snapPose();
+
+/* 底部堆疊的實際高度。操作台的六顆按鈕會換行——375px 下是兩到三列，
+   而且 Noto Sans TC 載完前後寬度會變、列數跟著變。在斷點裡寫死 bottom
+   一定會在某個寬度撞上（原本 .cue 的 bottom:180px 在 375×667 就被操作台蓋掉 35px）。
+   量出來寫進 CSS 變數，幕卡／紀錄簿／免責聲明都靠它避開彼此。 */
+function layoutStack(){
+ var vis=function(id){var e=document.getElementById(id);
+  return e&&getComputedStyle(e).display!=='none'?Math.round(e.getBoundingClientRect().height):0};
+ var d=vis('deck'),f=vis('foot'),s=vis('btn-skip');
+ var deck=d?d+14:0,foot=f?f+8:0,skip=s?s+16:0;      /* 14／8／16 ＝ 各自的 bottom */
+ var st=document.documentElement.style;
+ st.setProperty('--deckh',deck+'px');
+ st.setProperty('--stackh',Math.max(deck+foot,skip)+'px');
+ /* 紀錄簿要讓開右上的挪車讀數——讀數是這個展覽的頭條數字，被蓋掉就沒意義。
+    帳單會從一列長到兩列（平面對照出現時），所以量它的實際下緣，不寫死。 */
+ var b=document.getElementById('bill');
+ st.setProperty('--billb',
+  (b&&getComputedStyle(b).display!=='none'?Math.round(b.getBoundingClientRect().bottom):56)+'px')}
+addEventListener('resize',layoutStack);
+/* 手機還有兩個 window resize 不一定涵蓋的情況：轉向、以及網址列收合造成的
+   視覺視窗變動（Safari 有時只發 visualViewport 的 resize）。漏掉的話 --deckh 會過期，
+   免責聲明就會壓在操作台按鈕上（而且它現在是 pointer-events:auto，會把按鈕擋住）。 */
+addEventListener('orientationchange',function(){setTimeout(layoutStack,120)});
+if(window.visualViewport)visualViewport.addEventListener('resize',layoutStack);
+(function(){
+ /* ResizeObserver 對 display:none 的元素實測不會補發通知（Chrome：觀察中的元素
+    從 none 切成 block 也不觸發），而這幾個面板正是靠 inline display 開關的。
+    所以主觸發用 MutationObserver 盯 style 屬性，RO 只當補網。 */
+ /* 直接同步呼叫，不要包 requestAnimationFrame：分頁在背景時 rAF 完全不執行，
+    包起來的話使用者切回來會看到一瞬間錯位的版面。這裡一次強制回流的代價可以忽略
+    （只在面板開關時發生，不是每幀）。 */
+ var ids=['deck','foot','btn-skip','bill'],tick=layoutStack;
+ var mo=new MutationObserver(tick);
+ ids.forEach(function(i){var e=document.getElementById(i);
+  /* bill 要 subtree：它變高是因為子元素 #b-flat-row 從 none 變 block */
+  if(e)mo.observe(e,{attributes:true,attributeFilter:['style','class'],subtree:true})});
+ if(window.ResizeObserver){var ro=new ResizeObserver(tick);
+  ids.forEach(function(i){var e=document.getElementById(i);if(e)ro.observe(e)})}
+})();
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(layoutStack);
+setTimeout(layoutStack,700);        /* 字體／晚到的排版都落定之後再量一次 */
+layoutStack();
 
 (function loop(t){requestAnimationFrame(loop);
  for(var i=tweens.length-1;i>=0;i--){var tw=tweens[i];

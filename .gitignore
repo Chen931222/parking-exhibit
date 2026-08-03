@@ -2,3 +2,6 @@
 
 .DS_Store
 .env*
+
+# Blender 自動備份
+*.blend1

@@ -11,13 +11,20 @@
 
 - `index.html` — 展示站本體（單檔，Three.js 是唯一外部函式庫）
 - `_src/` — 課堂原始 Python：`parking_stack.py`、`waiting_queue.py`、`car_record_tree.py`、`main.py`
-- `models/` — Kenney Car Kit 車模（CC0，License.txt 在資料夾內）
+- `models/` — 自建 3D 資產：`w202.glb`（W202 sedan）、`w202t.glb`（T-Modell 旅行車）、
+  `lot.glb`（整座停車場：地坪、標線、緣石島、圍牆、燈桿、收費亭、進出道閘）
+- `_blender/parking-exhibit.blend` — 上面三顆 GLB 的來源場景（不部署）
 
 ## 運作方式
 
 網站引擎是 `_src/` 內 Python 邏輯的 JS 移植：堆疊×2（一般區＋身障區）、
 等待佇列、BST 出入紀錄。動畫每一步旁的程式字條直接節錄課堂原始碼，
 「挪車 k 台」的數字由引擎即時計算，不是寫死的。
+
+3D 資產（車、停車場）全部在 Blender 建模與上材質，程序化下料，
+尺寸照實車換算（車長 4487mm ↔ 站上 2.4 單位，即 1 公尺 = 0.535 單位）。
+車子的行進與挪車順序不烘成動畫——那是引擎即時算的，
+Blender 只負責幾何、材質與可重複播放的機構（輪子節點、道閘臂桿）。
 
 展示層（3D 場景、動畫、網頁）在 AI 工具協作下完成；
 資料結構的規則與行為以 `_src/` 的課堂原始碼為準。

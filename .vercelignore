@@ -1,4 +1,6 @@
 _src
+_blender
+.claude
 !models
 *.md
 .vercelignore
