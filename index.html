@@ -164,12 +164,17 @@ button.on-tgl{border-color:var(--paint);color:var(--paint)}   /* 開關型按鈕
 
 /* ══ 開場片 ══
    全幕播完《挪車的代價》，淡出接回展覽的標題頁。
-   object-fit 用 contain 不是 cover：影片左右兩側就是堆疊與佇列的狀態面板，
-   而 cover 在任何比 16:9 窄的視窗都會先裁掉左右——1440×900 就要各裁 80px，
-   正好切進面板。把面板裁掉等於把這支片存在的理由裁掉。留黑邊，
-   底色與柏油同色（#141416），在接近 16:9 的螢幕上看不出來。 */
+   影片是 16:9，HUD 全部壓在 y=100..636（720 格座標）的安全區內。
+   cover 只在「裁掉的部分還碰不到安全區」的比例區間才開：
+     上限 = 上下各可裁 84px → (1 − 16/9 ÷ r) ÷ 2 × 720 ≤ 84 → r ≤ 2.32
+   所以 16/9 ≤ 比值 ≤ 23/10 用 cover 填滿（1920×1080 的螢幕扣掉瀏覽器上方
+   大約是 1920×950、比值 2.02，正好落在裡面，零黑邊）。
+   超出這個區間就退回 contain，寧可留黑邊也不要把面板裁掉：
+   2560×1000 實測要裁 110px，堆疊面板的頂和程式字條會同時消失；
+   直式手機（0.46）更誇張，cover 得裁掉將近七成的寬度。 */
 .intro{position:fixed;inset:0;z-index:50;background:var(--asphalt);transition:opacity .8s ease}
 .intro video{width:100%;height:100%;object-fit:contain;display:block;background:var(--asphalt)}
+@media(min-aspect-ratio:16/9) and (max-aspect-ratio:23/10){.intro video{object-fit:cover}}
 .intro.off{opacity:0;pointer-events:none}
 .intro .sk{position:absolute;right:16px;bottom:16px;font-size:12px;padding:7px 14px}
 /* 進度＝地上的標線：1px 實線。訪客要知道還剩多久才肯等完 25 秒，
