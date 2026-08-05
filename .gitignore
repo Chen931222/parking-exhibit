@@ -5,3 +5,5 @@
 
 # Blender 自動備份
 *.blend1
+
+.claude/

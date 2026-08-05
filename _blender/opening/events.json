@@ -1,0 +1,232 @@
+{
+  "fps": 24,
+  "frames": 611,
+  "res": [
+    720,
+    405
+  ],
+  "target": "RBK-2140",
+  "moves": 4,
+  "alley_plates": [
+    "RBK-2140",
+    "APH-6072",
+    "MQD-3318",
+    "TSV-9265",
+    "KLN-4471"
+  ],
+  "queue_plates": [
+    "ZWC-5083",
+    "NFJ-1926",
+    "GTX-7734"
+  ],
+  "flat_plate": "BXH-8859",
+  "dequeued": "ZWC-5083",
+  "pop_seq": [
+    "KLN-4471",
+    "TSV-9265",
+    "MQD-3318",
+    "APH-6072"
+  ],
+  "push_seq": [
+    "APH-6072",
+    "MQD-3318",
+    "TSV-9265",
+    "KLN-4471"
+  ],
+  "final_stack": [
+    "APH-6072",
+    "MQD-3318",
+    "TSV-9265",
+    "KLN-4471",
+    "ZWC-5083"
+  ],
+  "shots": {
+    "A": [
+      1,
+      48
+    ],
+    "B": [
+      49,
+      108
+    ],
+    "C": [
+      109,
+      565
+    ],
+    "E": [
+      150,
+      210
+    ],
+    "D": [
+      541,
+      611
+    ]
+  },
+  "events": [
+    {
+      "op": "pop",
+      "plate": "KLN-4471",
+      "f0": 109,
+      "f1": 164,
+      "from_slot": 4,
+      "moves_after": 1
+    },
+    {
+      "op": "pop",
+      "plate": "TSV-9265",
+      "f0": 141,
+      "f1": 206,
+      "from_slot": 3,
+      "moves_after": 2
+    },
+    {
+      "op": "pop",
+      "plate": "MQD-3318",
+      "f0": 173,
+      "f1": 251,
+      "from_slot": 2,
+      "moves_after": 3
+    },
+    {
+      "op": "pop",
+      "plate": "APH-6072",
+      "f0": 205,
+      "f1": 301,
+      "from_slot": 1,
+      "moves_after": 4
+    },
+    {
+      "op": "push",
+      "plate": "APH-6072",
+      "f0": 391,
+      "f1": 532,
+      "to_slot": 0,
+      "moves_after": 4
+    },
+    {
+      "op": "push",
+      "plate": "MQD-3318",
+      "f0": 419,
+      "f1": 538,
+      "to_slot": 1,
+      "moves_after": 4
+    },
+    {
+      "op": "push",
+      "plate": "TSV-9265",
+      "f0": 447,
+      "f1": 549,
+      "to_slot": 2,
+      "moves_after": 4
+    },
+    {
+      "op": "push",
+      "plate": "KLN-4471",
+      "f0": 475,
+      "f1": 565,
+      "to_slot": 3,
+      "moves_after": 4
+    },
+    {
+      "op": "leave",
+      "plate": "RBK-2140",
+      "f0": 273,
+      "f1": 439,
+      "moves": 4
+    },
+    {
+      "op": "flat_leave",
+      "plate": "BXH-8859",
+      "f0": 141,
+      "f1": 222,
+      "moves": 0
+    },
+    {
+      "op": "dequeue",
+      "plate": "ZWC-5083",
+      "f0": 560,
+      "f1": 607
+    }
+  ],
+  "ops": [
+    {
+      "op": "push",
+      "plate": "RBK-2140",
+      "depth": 0
+    },
+    {
+      "op": "push",
+      "plate": "APH-6072",
+      "depth": 1
+    },
+    {
+      "op": "push",
+      "plate": "MQD-3318",
+      "depth": 2
+    },
+    {
+      "op": "push",
+      "plate": "TSV-9265",
+      "depth": 3
+    },
+    {
+      "op": "push",
+      "plate": "KLN-4471",
+      "depth": 4
+    },
+    {
+      "op": "pop",
+      "plate": "KLN-4471",
+      "reason": "blocking"
+    },
+    {
+      "op": "pop",
+      "plate": "TSV-9265",
+      "reason": "blocking"
+    },
+    {
+      "op": "pop",
+      "plate": "MQD-3318",
+      "reason": "blocking"
+    },
+    {
+      "op": "pop",
+      "plate": "APH-6072",
+      "reason": "blocking"
+    },
+    {
+      "op": "leave",
+      "plate": "RBK-2140",
+      "moves": 4
+    },
+    {
+      "op": "push",
+      "plate": "APH-6072",
+      "depth": 0
+    },
+    {
+      "op": "push",
+      "plate": "MQD-3318",
+      "depth": 1
+    },
+    {
+      "op": "push",
+      "plate": "TSV-9265",
+      "depth": 2
+    },
+    {
+      "op": "push",
+      "plate": "KLN-4471",
+      "depth": 3
+    },
+    {
+      "op": "dequeue",
+      "plate": "ZWC-5083"
+    },
+    {
+      "op": "push",
+      "plate": "ZWC-5083",
+      "depth": 4
+    }
+  ]
+}

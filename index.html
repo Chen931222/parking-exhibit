@@ -143,7 +143,7 @@ button.on-tgl{border-color:var(--paint);color:var(--paint)}   /* 開關型按鈕
   .deck .rowa{gap:6px}
   .deck .rowa button{padding:10px 11px;font-size:12.5px;min-height:44px}  /* 觸控目標下限 */
   .deck .hint{font-size:10.5px;margin-top:6px;line-height:1.5}
-  .title .go button,.skip{min-height:44px}
+  .title .go button,.skip,.intro .sk{min-height:44px}
   .ledger .hd button{min-width:44px;min-height:44px}
   /* 字條原本 top:142 整寬——正好蓋住 3D 畫面正中央（實測操作台鏡頭下巷道 5 格
      全部落在它後面）。改成停靠在底部堆疊上緣，只留「這一步在做什麼」＋高亮那行程式；
@@ -162,6 +162,20 @@ button.on-tgl{border-color:var(--paint);color:var(--paint)}   /* 開關型按鈕
   .cue{bottom:calc(var(--stackh,150px) + 8px)}
 }
 
+/* ══ 開場片 ══
+   全幕播完《挪車的代價》，淡出接回展覽的標題頁。
+   object-fit 用 contain 不是 cover：影片左右兩側就是堆疊與佇列的狀態面板，
+   而 cover 在任何比 16:9 窄的視窗都會先裁掉左右——1440×900 就要各裁 80px，
+   正好切進面板。把面板裁掉等於把這支片存在的理由裁掉。留黑邊，
+   底色與柏油同色（#141416），在接近 16:9 的螢幕上看不出來。 */
+.intro{position:fixed;inset:0;z-index:50;background:var(--asphalt);transition:opacity .8s ease}
+.intro video{width:100%;height:100%;object-fit:contain;display:block;background:var(--asphalt)}
+.intro.off{opacity:0;pointer-events:none}
+.intro .sk{position:absolute;right:16px;bottom:16px;font-size:12px;padding:7px 14px}
+/* 進度＝地上的標線：1px 實線。訪客要知道還剩多久才肯等完 25 秒，
+   但不能為此擺進度環或倒數讀數——那是儀表板語彙，不是停車場的。 */
+.intro .bar{position:absolute;left:0;bottom:0;height:1px;background:var(--paint);width:0}
+
 /* 觸控裝置的目標下限 44×44（不看寬度看指標型態：平板橫放也是手指點） */
 @media(pointer:coarse){
   button{min-height:44px}
@@ -176,6 +190,78 @@ button.on-tgl{border-color:var(--paint);color:var(--paint)}   /* 開關型按鈕
 </head>
 <body>
 <canvas id="gl"></canvas>
+
+<div class="intro" id="intro">
+  <video id="intro-v" playsinline muted autoplay preload="auto" poster="media/opening-poster.jpg">
+    <source src="media/opening.webm" type="video/webm">
+    <source src="media/opening.mp4" type="video/mp4">
+  </video>
+  <div class="bar" id="intro-bar"></div>
+  <button class="sk" id="intro-skip">跳過開場 ▸▸</button>
+</div>
+<script>
+/* 開場片刻意寫成 classic script 擺在這裡，不併進下面的展覽模組：
+   那支是 type="module"（等同 defer），要等 Three.js 從 CDN 解析完才執行。
+   影片如果排在它後面才開始載，訪客會先盯著幾秒黑畫面——
+   而這幾秒正好是最容易關掉分頁的幾秒。 */
+window.__intro = (function () {
+  var box = document.getElementById('intro'), v = document.getElementById('intro-v'),
+      bar = document.getElementById('intro-bar'), done = false, resolve;
+  var p = new Promise(function (r) { resolve = r });
+
+  /* why 只是留給除錯：開場片一旦「莫名其妙沒播」，在別人的瀏覽器上
+     沒有這個字串就只能瞎猜是自動播放被擋、還是檔案沒載到。 */
+  function end(why) {
+    if (done) return; done = true;
+    window.__introEnd = (why || 'ended') + '@' + Math.round(performance.now());
+    box.classList.add('off');
+    /* 淡出後要真的把影片卸掉。只設 opacity:0 的話 H.264 解碼緒還在跑，
+       會跟剛啟動的 Three.js 搶 GPU，導覽的第一個 tween 就掉幀。 */
+    setTimeout(function () {
+      try { v.pause(); v.removeAttribute('src'); v.load() } catch (e) {}
+      box.remove();
+    }, 900);
+    resolve();
+  }
+
+  /* prefers-reduced-motion 的人不該被一段 25 秒的自動播放堵在門口；
+     ?nointro 給自己測站內容用，免得每次重載都要等或按跳過。 */
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches || /[?&]nointro/.test(location.search)) {
+    box.remove();
+    return Promise.resolve();
+  }
+
+  document.getElementById('intro-skip').onclick = function () { end('skip') };
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') end('esc') });
+  v.addEventListener('ended', function () { end('ended') });
+  v.addEventListener('error', function () { end('media-error') });
+  v.addEventListener('timeupdate', function () {
+    if (v.duration) bar.style.width = (v.currentTime / v.duration * 100) + '%';
+  });
+
+  /* 三道保險。開場片可以不播，但絕不能讓網站卡在開場：
+     ① 網路慢或檔案掛掉 → 5 秒還沒 canplay 就放行
+     ② 瀏覽器擋掉自動播放（省流量模式）→ 1.6 秒還停在原地就放行
+     ③ 解碼出錯 → 上面的 error 監聽 */
+  var guard = setTimeout(function () { if (v.readyState < 3) end('stall') }, 5000);
+  v.addEventListener('canplay', function () { clearTimeout(guard) });
+
+  /* play() 被 reject 不等於被擋掉。<video autoplay> 再加一次手動 play() 會賽跑：
+     資源選擇演算法還在挑 <source> 時呼叫 play()，載入一重啟就把那個 promise
+     以 AbortError 收掉——但 autoplay 屬性本身照樣把影片播起來。
+     把 AbortError 當失敗，等於自己把開場片關掉（實測就是這樣掛的）。
+     只有 NotAllowedError 才是使用者代理真的拒絕自動播放。 */
+  var play = v.play();
+  if (play && play.catch) play.catch(function (e) {
+    if (e && e.name === 'NotAllowedError') end('blocked');
+  });
+  /* 真正的裁判是「時間到了到底有沒有在動」，不是那個 promise 的結果。 */
+  setTimeout(function () { if (!done && v.paused) end('not-started') }, 2200);
+
+  return p;
+})();
+</script>
+
 <div class="ui">
   <div class="mast mono">
     <span>PARKING RECORDS · 挪車的代價<span class="opt"> · 資料結構期末改造</span></span>
@@ -910,8 +996,14 @@ document.getElementById('op-ledger-x').onclick=function(){ledger.style.display='
 document.getElementById('btn-tour').onclick=function(){tour()};
 document.getElementById('btn-skip0').onclick=function(){INSTANT=true;tour()};
 document.getElementById('btn-skip').onclick=function(){INSTANT=true;flushAnim()};
-if(REDUCED){INSTANT=true;setTimeout(tour,300)}
-else setTimeout(function(){if(!touring&&!toured)tour()},2600);
+/* 導覽的自動啟動要等開場片結束才計時。
+   不 gate 的話這個 2600ms 會在影片背後跑掉，25 秒後淡出時導覽早就演完了
+   ——訪客會直接面對一個「已經結束」的場，這是最難察覺也最致命的一種壞法。
+   3D 場景本身照樣在影片後面預先載入，所以片尾接上來不必再等模型。 */
+(window.__intro || Promise.resolve()).then(function(){
+  if(REDUCED){INSTANT=true;setTimeout(tour,300)}
+  else setTimeout(function(){if(!touring&&!toured)tour()},2600);
+});
 try{window.__spdf=function(f){SPDF=f};
  window.__pose=function(n,d){return pose(n,d)};
  window.__ring=function(v,x,z){ring.visible=!!v;
